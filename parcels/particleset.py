@@ -180,8 +180,8 @@ class ParticleSet(object):
 
         for kwvar in kwargs:
             kwargs[kwvar] = convert_to_array(kwargs[kwvar])
-            assert lon.size == kwargs[kwvar].size, (
-                '%s and positions (lon, lat, depth) don''t have the same lengths.' % kwvar)
+            assert lon.size == kwargs[kwvar].shape[0], (
+                '%s and positions (lon, lat, depth) don''t have the same lengths.' % kwargs[kwvar])
 
         offset = np.max(pid) if len(pid) > 0 else -1
         if MPI:
@@ -250,6 +250,8 @@ class ParticleSet(object):
             if v.name in ['xi', 'yi', 'zi', 'ti']:
                 ngrid = fieldset.gridset.size if fieldset is not None else 1
                 self.particle_data[v.name] = np.empty((len(lon), ngrid), dtype=v.dtype)
+            elif v.dtype == object:
+                self.particle_data[v.name] = np.empty(kwargs[v.name].shape, dtype=v.dtype)
             else:
                 self.particle_data[v.name] = np.empty(len(lon), dtype=v.dtype)
 
