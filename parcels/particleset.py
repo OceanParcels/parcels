@@ -599,6 +599,9 @@ class ParticleSet(object):
         self.add(particles)
         return self
 
+    def _create_progressbar_(self, starttime, endtime):
+        return self.__create_progressbar(starttime, endtime)
+
     def __create_progressbar(self, starttime, endtime):
         pbar = None
         try:
