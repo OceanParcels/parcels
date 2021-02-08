@@ -5,8 +5,8 @@ Date: 11-02-2020
 
 from parcels import AdvectionEE, AdvectionRK45, AdvectionRK4
 from parcels import FieldSet, ScipyParticle, JITParticle, Variable, AdvectionRK4, ErrorCode
-from parcels.particleset_benchmark import ParticleSet_Benchmark as ParticleSet
-from parcels.particleset import ParticleSet as DryParticleSet
+from parcels.particleset_node_benchmark import ParticleSet_Benchmark as ParticleSetN
+from parcels.particleset_vectorized_benchmark import ParticleSet_Benchmark as ParticleSetV
 from parcels.field import Field, VectorField, NestedField, SummedField
 # from parcels import plotTrajectoriesFile_loadedField
 from parcels import rng as random
@@ -189,8 +189,12 @@ if __name__=='__main__':
     parser.add_argument("-sN", "--start_n_particles", dest="start_nparticles", type=str, default="96", help="(optional) number of particles generated per release cycle (if --rt is set) (default: 96)")
     parser.add_argument("-m", "--mode", dest="compute_mode", choices=['jit','scipy'], default="jit", help="computation mode = [JIT, SciPp]")
     parser.add_argument("-G", "--GC", dest="useGC", action='store_true', default=False, help="using a garbage collector (default: false)")
+    parser.add_argument("--vmode", dest="vmode", action='store_true', default=False, help="use vectorized- instead of node-ParticleSet (default: False)")
     args = parser.parse_args()
 
+    ParticleSet = ParticleSetN
+    if args.vmode:
+        ParticleSet = ParticleSetV
     imageFileName=args.imageFileName
     periodicFlag=args.periodic
     backwardSimulation = args.backwards
@@ -230,7 +234,7 @@ if __name__=='__main__':
     nowtime = datetime.datetime.now()
     random.seed(nowtime.microsecond)
 
-    branch = "benchmarking"
+    branch = "nodes"
     computer_env = "local/unspecified"
     scenario = "bickleyjet"
     odir = ""
@@ -340,6 +344,8 @@ if __name__=='__main__':
             out_fname += "_MPI"
         else:
             out_fname += "_noMPI"
+        if periodicFlag:
+            out_fname += "_p"
         out_fname += "_n"+str(Nparticle)
         if backwardSimulation:
             out_fname += "_bwd"

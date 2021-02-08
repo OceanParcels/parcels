@@ -1,5 +1,6 @@
-from parcels import (FieldSet, Field, NestedField, ParticleSet, ScipyParticle, JITParticle, Geographic,
+from parcels import (FieldSet, Field, NestedField, ScipyParticle, JITParticle, Geographic,
                      AdvectionRK4, AdvectionRK4_3D, Variable, ErrorCode)
+from parcels.particleset_vectorized import ParticleSet
 import numpy as np
 import pytest
 from math import cos, pi

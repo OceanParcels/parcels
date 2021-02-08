@@ -1,22 +1,26 @@
 import collections
 import time as time_module
 from datetime import date
-from datetime import datetime
+from datetime import datetime as dtime
 from datetime import timedelta as delta
 
+import os
 import numpy as np
 import xarray as xr
 import progressbar
 
-from parcels.compiler import GNUCompiler
+# from parcels.tools import cleanup_remove_files, cleanup_unload_lib, get_cache_dir, get_package_dir
+from parcels.tools import get_package_dir
+# from parcels.compiler import GNUCompiler
+from parcels.wrapping.code_compiler import GNUCompiler
 from parcels.field import NestedField
 from parcels.field import SummedField
 from parcels.grid import GridCode
-from parcels.kernel import Kernel
+from parcels.kernel_vectorized import Kernel
 from parcels.kernels.advection import AdvectionRK4
 from parcels.particle import JITParticle
-from parcels.particlefile import ParticleFile
-from parcels.tools.error import ErrorCode
+from parcels.particlefile_vectorized import ParticleFile
+# from parcels.tools.error import ErrorCode
 from parcels.tools.loggers import logger
 try:
     from mpi4py import MPI
@@ -52,23 +56,23 @@ class ParticleSet(object):
            are distributed automatically on the processors
     Other Variables can be initialised using further arguments (e.g. v=... for a Variable named 'v')
     """
+    @staticmethod
+    def _convert_to_array_(var):
+        # Convert lists and single integers/floats to one-dimensional numpy arrays
+        if isinstance(var, np.ndarray):
+            return var.flatten()
+        elif isinstance(var, (int, float, np.float32, np.int32)):
+            return np.array([var])
+        else:
+            return np.array(var)
 
     def __init__(self, fieldset, pclass=JITParticle, lon=None, lat=None, depth=None, time=None, repeatdt=None, lonlatdepth_dtype=None, pid_orig=None, **kwargs):
         self.fieldset = fieldset
         self.fieldset.check_complete()
         partitions = kwargs.pop('partitions', None)
 
-        def convert_to_array(var):
-            # Convert lists and single integers/floats to one-dimensional numpy arrays
-            if isinstance(var, np.ndarray):
-                return var.flatten()
-            elif isinstance(var, (int, float, np.float32, np.int32)):
-                return np.array([var])
-            else:
-                return np.array(var)
-
-        lon = np.empty(shape=0) if lon is None else convert_to_array(lon)
-        lat = np.empty(shape=0) if lat is None else convert_to_array(lat)
+        lon = np.empty(shape=0) if lon is None else self._convert_to_array_(lon)
+        lat = np.empty(shape=0) if lat is None else self._convert_to_array_(lat)
         if pid_orig is None:
             pid_orig = np.arange(lon.size)
         pid = pid_orig + pclass.lastID
@@ -77,13 +81,13 @@ class ParticleSet(object):
             mindepth, _ = self.fieldset.gridset.dimrange('depth')
             depth = np.ones(lon.size) * mindepth
         else:
-            depth = convert_to_array(depth)
+            depth = self._convert_to_array_(depth)
         assert lon.size == lat.size and lon.size == depth.size, (
             'lon, lat, depth don''t all have the same lenghts')
 
-        time = convert_to_array(time)
+        time = self._convert_to_array_(time)
         time = np.repeat(time, lon.size) if time.size == 1 else time
-        if time.size > 0 and type(time[0]) in [datetime, date]:
+        if time.size > 0 and type(time[0]) in [dtime, date]:
             time = np.array([np.datetime64(t) for t in time])
         self.time_origin = fieldset.time_origin
         if time.size > 0 and isinstance(time[0], np.timedelta64) and not self.time_origin:
@@ -93,14 +97,17 @@ class ParticleSet(object):
             'time and positions (lon, lat, depth) don''t have the same lengths.')
 
         if partitions is not None and partitions is not False:
-            partitions = convert_to_array(partitions)
+            partitions = self._convert_to_array_(partitions)
 
         for kwvar in kwargs:
-            kwargs[kwvar] = convert_to_array(kwargs[kwvar])
+            kwargs[kwvar] = self._convert_to_array_(kwargs[kwvar])
             assert lon.size == kwargs[kwvar].size, (
                 '%s and positions (lon, lat, depth) don''t have the same lengths.' % kwargs[kwvar])
 
-        offset = np.max(pid) if len(pid) > 0 else -1
+        # this is not all to clever because all particles of a particle set are only initialized ONCE,
+        # thus once determined on setup their MPI distribution stays fixed. That means that after several iterations
+        # particles within one cluster are not necessarily co-located as they moved ...
+        offset = np.max(pid) if (pid is not None) and (len(pid) > 0) else -1
         if MPI:
             mpi_comm = MPI.COMM_WORLD
             mpi_rank = mpi_comm.Get_rank()
@@ -183,6 +190,10 @@ class ParticleSet(object):
                     setattr(self.particles[i], kwvar, kwargs[kwvar][i])
         else:
             raise ValueError("Latitude and longitude required for generating ParticleSet")
+
+    @property
+    def particle_data(self):
+        return self._particle_data
 
     @classmethod
     def from_list(cls, fieldset, pclass, lon, lat, depth=None, time=None, repeatdt=None, lonlatdepth_dtype=None, **kwargs):
@@ -309,7 +320,7 @@ class ParticleSet(object):
         lat = np.ma.filled(pfile.variables['lat'][:, -1], np.nan)
         depth = np.ma.filled(pfile.variables['z'][:, -1], np.nan)
         time = np.ma.filled(pfile.variables['time'][:, -1], np.nan)
-        pid = np.ma.filled(pfile.variables['trajectory'][:, -1], np.nan)
+        pid = np.ma.filled(pfile.variables['trajectory'][:, -1], np.nan).astype(dtype=np.uint64)
         if isinstance(time[0], np.timedelta64):
             time = np.array([t/np.timedelta64(1, 's') for t in time])
 
@@ -373,10 +384,12 @@ class ParticleSet(object):
             raise NotImplementedError('Only ParticleSets can be added to a ParticleSet')
         self.particles = np.append(self.particles, particles)
         if self.ptype.uses_jit:
+            # particles_data = [p.get_cptr() for p in particles]
             particles_data = [p._cptr for p in particles]
             self._particle_data = np.append(self._particle_data, particles_data)
             # Update C-pointer on particles
             for p, pdata in zip(self.particles, self._particle_data):
+                # p.set_cptr(pdata)
                 p._cptr = pdata
 
     def remove(self, indices):
@@ -390,6 +403,7 @@ class ParticleSet(object):
             self._particle_data = np.delete(self._particle_data, indices)
             # Update C-pointer on particles
             for p, pdata in zip(self.particles, self._particle_data):
+                # p.set_cptr(pdata)
                 p._cptr = pdata
         return particles
 
@@ -436,13 +450,13 @@ class ParticleSet(object):
             if self.ptype.uses_jit:
                 self.kernel.remove_lib()
                 cppargs = ['-DDOUBLE_COORD_VARIABLES'] if self.lonlatdepth_dtype == np.float64 else None
-                self.kernel.compile(compiler=GNUCompiler(cppargs=cppargs))
+                self.kernel.compile(compiler=GNUCompiler(cppargs=cppargs, incdirs=[os.path.join(get_package_dir(), 'include'), "."]))
                 self.kernel.load_lib()
 
         # Convert all time variables to seconds
         if isinstance(endtime, delta):
             raise RuntimeError('endtime must be either a datetime or a double')
-        if isinstance(endtime, datetime):
+        if isinstance(endtime, dtime):
             endtime = np.datetime64(endtime)
         if isinstance(endtime, np.datetime64):
             if self.time_origin.calendar is None:

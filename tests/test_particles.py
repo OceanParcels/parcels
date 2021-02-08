@@ -1,4 +1,5 @@
-from parcels import FieldSet, ParticleSet, ScipyParticle, JITParticle, Variable, AdvectionRK4
+from parcels import FieldSet, ScipyParticle, JITParticle, Variable, AdvectionRK4
+from parcels.particleset_vectorized import ParticleSet
 import numpy as np
 import pytest
 from operator import attrgetter

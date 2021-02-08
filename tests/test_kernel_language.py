@@ -1,9 +1,13 @@
-from parcels import FieldSet, ParticleSet, ScipyParticle, JITParticle, Kernel, Variable, ErrorCode
-from parcels.kernels.seawaterdensity import polyTEOS10_bsq, UNESCO_Density
-from parcels import random as parcels_random
-import numpy as np
-import pytest
 import random as py_random
+#from parcels import random as parcels_random => this doesn't work, and we should not 'ghost' up which random module is used; the module shoudl really get a different name
+from parcels import random as parcels_random
+from parcels.rng import parcels_random as pa_random
+import numpy as np
+from parcels import FieldSet, ScipyParticle, JITParticle, Variable, ErrorCode
+from parcels.particleset_vectorized import ParticleSet
+from parcels.kernel_vectorized import Kernel
+from parcels.kernels.seawaterdensity import polyTEOS10_bsq, UNESCO_Density
+import pytest
 from os import path
 import sys
 
@@ -13,7 +17,8 @@ ptype = {'scipy': ScipyParticle, 'jit': JITParticle}
 
 def expr_kernel(name, pset, expr):
     pycode = """def %s(particle, fieldset, time):
-    particle.p = %s""" % (name, expr)
+    particle.p = %s
+    return ErrorCode.Success""" % (name, expr)
     return Kernel(pset.fieldset, pset.ptype, pyfunc=None,
                   funccode=pycode, funcname=name,
                   funcvars=['particle'])
@@ -240,11 +245,12 @@ def test_print(fieldset, mode, capfd):
 
 
 def random_series(npart, rngfunc, rngargs, mode):
-    random = parcels_random if mode == 'jit' else py_random
-    random.seed(1234)
-    func = getattr(random, rngfunc)
+    random_mod = parcels_random if mode == 'jit' else py_random
+    print(repr(random_mod))
+    random_mod.seed(1234)
+    func = getattr(random_mod, rngfunc)
     series = [func(*rngargs) for _ in range(npart)]
-    random.seed(1234)  # Reset the RNG seed
+    random_mod.seed(1234)  # Reset the RNG seed
     return series
 
 
@@ -257,7 +263,7 @@ def random_series(npart, rngfunc, rngargs, mode):
 def test_random_float(fieldset, mode, rngfunc, rngargs, npart=10):
     """ Test basic random number generation """
     class TestParticle(ptype[mode]):
-        p = Variable('p', dtype=np.float32 if rngfunc == 'randint' else np.float32)
+        p = Variable('p', dtype=np.int32 if rngfunc == 'randint' else np.float32)
     pset = ParticleSet(fieldset, pclass=TestParticle,
                        lon=np.linspace(0., 1., npart),
                        lat=np.zeros(npart) + 0.5)

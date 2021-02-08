@@ -1,4 +1,5 @@
-from parcels import (FieldSet, Field, ParticleSet, ScipyParticle, JITParticle, Variable, AdvectionRK4, AdvectionRK4_3D, ErrorCode)
+from parcels import (FieldSet, Field, ScipyParticle, JITParticle, Variable, AdvectionRK4, AdvectionRK4_3D, ErrorCode)
+from parcels.particleset_vectorized import ParticleSet
 from parcels import RectilinearZGrid, RectilinearSGrid, CurvilinearZGrid
 import numpy as np
 import xarray as xr

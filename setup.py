@@ -13,6 +13,7 @@ setup(name='parcels',
       setup_requires=['setuptools_scm', 'setuptools_scm_git_archive'],
       packages=find_packages(),
       package_data={'parcels': ['include/*',
+                                'nodes/*',
                                 'examples/*']},
       entry_points={'console_scripts': [
           'parcels_get_examples = parcels.scripts.get_examples:main',

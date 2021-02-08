@@ -1,4 +1,5 @@
-from parcels import FieldSet, ParticleSet, ScipyParticle, JITParticle, Variable, AdvectionRK4, AdvectionRK4_3D, RectilinearZGrid, ErrorCode, OutOfTimeError
+from parcels import FieldSet, ScipyParticle, JITParticle, Variable, AdvectionRK4, AdvectionRK4_3D, RectilinearZGrid, ErrorCode, OutOfTimeError
+from parcels.particleset_vectorized import ParticleSet
 from parcels.field import Field, VectorField
 from parcels.tools.converters import TimeConverter, _get_cftime_calendars, _get_cftime_datetimes, UnitConverter, GeographicPolar
 import dask.array as da

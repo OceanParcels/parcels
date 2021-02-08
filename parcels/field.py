@@ -492,12 +492,19 @@ class Field(object):
             data = self.add_periodic_halo(zonal=self.grid.zonal_halo > 0, meridional=self.grid.meridional_halo > 0, halosize=max(self.grid.meridional_halo, self.grid.zonal_halo), data=data)
         return data
 
+    @property
+    def scaling_factor(self):
+        return self._scaling_factor
+
+    @scaling_factor.setter
+    def scaling_factor(self, factor):
+        self.set_scaling_factor(factor)
+
     def set_scaling_factor(self, factor):
         """Scales the field data by some constant factor.
 
         :param factor: scaling factor
         """
-
         if self._scaling_factor:
             raise NotImplementedError(('Scaling factor for field %s already defined.' % self.name))
         self._scaling_factor = factor

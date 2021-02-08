@@ -1,5 +1,5 @@
-from parcels import (FieldSet, ParticleSet, ScipyParticle, JITParticle,
-                     Variable, ErrorCode)
+from parcels import (FieldSet, ScipyParticle, JITParticle, Variable, ErrorCode)
+from parcels.particleset_vectorized import ParticleSet
 from parcels.particlefile import _set_calendar
 from parcels.tools.converters import _get_cftime_calendars, _get_cftime_datetimes
 import numpy as np

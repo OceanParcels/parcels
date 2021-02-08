@@ -1,5 +1,5 @@
-from parcels import (FieldSet, ParticleSet, JITParticle, AdvectionRK4,
-                     plotTrajectoriesFile)
+from parcels import (FieldSet, JITParticle, AdvectionRK4, plotTrajectoriesFile)
+from parcels.particleset_vectorized import ParticleSet
 from datetime import timedelta as delta
 import numpy as np
 import pytest

@@ -1,5 +1,7 @@
 from parcels import FieldSet, JITParticle, ScipyParticle, AdvectionRK4_3D, AdvectionRK4, ErrorCode, ParticleFile, Variable, Field, NestedField, VectorField, timer
-from parcels import ParticleSet_Benchmark
+from parcels.particleset_node_benchmark import ParticleSet_Benchmark
+# from parcels.particleset_vectorized_benchmark import ParticleSet_Benchmark
+from parcels.tools import idgen
 from parcels.kernels import seawaterdensity
 from argparse import ArgumentParser
 from datetime import timedelta as delta
@@ -11,7 +13,8 @@ from glob import glob
 import matplotlib.pyplot as plt
 import fnmatch
 import warnings
-import pickle                                                      
+import psutil
+import pickle
 import matplotlib.ticker as mtick
 from numpy import *
 import scipy.linalg
@@ -189,7 +192,7 @@ def DeleteParticle(particle, fieldset, time):
 def perIterGC():
     gc.collect()
 
-def getclosest_ij(lats,lons,latpt,lonpt):     
+def getclosest_ij(lats,lons,latpt,lonpt):
     """Function to find the index of the closest point to a certain lon/lat value."""
     dist_sq = (lats-latpt)**2 + (lons-lonpt)**2                 # find squared distance of every point on grid
     minindex_flattened = dist_sq.argmin()                       # 1D index of minimum dist_sq element
@@ -241,7 +244,9 @@ if __name__ == "__main__":
     time_in_days = int(float(eval(args.time_in_days)))
     with_GC = args.useGC
 
-    branch = "benchmarking"
+    idgen.setTimeLine(0, delta(days=time_in_days).total_seconds())
+
+    branch = "nodes"
     computer_env = "local/unspecified"
     scenario = "deep_migration"
     headdir = ""
@@ -349,6 +354,8 @@ if __name__ == "__main__":
     fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, field_chunksize=chs, time_periodic=delta(days=365))
     depths = fieldset.U.depth
 
+    idgen.setDepthLimits(np.min(depths), np.max(depths))
+
     outfile = 'Kooi+NEMO_3D_grid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(simdays)+'days_'+str(secsdt)+'dtsecs_'+str(hrsoutdt)+'hrsoutdt'
     dirwrite = os.path.join(odir, "rho_"+str(int(rho_pl))+"kgm-3")
     if not os.path.exists(dirwrite):
@@ -452,3 +459,4 @@ if __name__ == "__main__":
         pset.plot_and_log(target_N=1, imageFilePath=imageFileName, odir=odir)
 
     print('Execution finished')
+    exit(0)

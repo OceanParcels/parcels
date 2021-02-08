@@ -45,6 +45,12 @@ def _set_calendar(origin_calendar):
     else:
         return origin_calendar
 
+# ==== Comment: the way this class is written is really unsustainable / non-maintainable. This is because it holds
+# ==== vectorized attribute copies of the particle set als well as their mapped memory areas in the NetCDF file,
+# ==== but NONE of the attributes are visible in the constructor. Basically: one wanted to subclass the ParticleSet
+# ==== and the NetCDF.Dataset, but instead mapped their attributes manually by lazy binding into this class.
+# ==== This obviously circumvents any variable checks and is also prone to leave garbage memory open during the computation.
+
 
 class ParticleFile(object):
     """Initialise trajectory output.
@@ -95,6 +101,7 @@ class ParticleFile(object):
             self.file_list = []
             self.time_written = []
             self.maxid_written = -1
+            # self.max_index_written = -1
 
         if tempwritedir is None:
             tempwritedir = os.path.join(os.path.dirname(str(self.name)), "out-%s"
@@ -135,10 +142,13 @@ class ParticleFile(object):
         self.dataset.parcels_mesh = self.parcels_mesh
 
         # Create ID variable according to CF conventions
-        self.id = self.dataset.createVariable("trajectory", "i4", coords,
-                                              fill_value=-2**(31))  # maxint32 fill_value
+        self.id = self.dataset.createVariable("trajectory", "i4", coords, fill_value=-2**(31))  # maxint32 fill_value
+        # self.id = self.dataset.createVariable("trajectory", "u8", coords, fill_value=(2**(64))-1)
         self.id.long_name = "Unique identifier for each particle"
         self.id.cf_role = "trajectory_id"
+
+        # self.index = self.dataset.createVariable("index_map", "i4", coords, fill_value=-2**(31))
+        # self.index.long_name = "running (zero-based continuous) indexing element referring to the LOCAL index of a particle within one timestep"
 
         # Create time, lat, lon and z variables according to CF conventions:
         self.time = self.dataset.createVariable("time", "f8", coords, fill_value=np.nan)
@@ -176,6 +186,8 @@ class ParticleFile(object):
 
         for vname in self.var_names:
             if vname not in ['time', 'lat', 'lon', 'depth', 'id']:
+                # ==== Comment - hm, that looks a bit 'crooked' - certainly from getting the ptype
+                # ==== you can parse the variables' bytesize - or make a "numpy-size to netcdf-size' conversion table here ...
                 setattr(self, vname, self.dataset.createVariable(vname, "f4", coords, fill_value=np.nan))
                 getattr(self, vname).long_name = ""
                 getattr(self, vname).standard_name = vname
@@ -183,6 +195,8 @@ class ParticleFile(object):
 
         for vname in self.var_names_once:
             setattr(self, vname, self.dataset.createVariable(vname, "f4", "traj", fill_value=np.nan))
+            # ==== Comment - hm, that looks a bit 'crooked' - certainly from getting the ptype
+            # ==== you can parse the variables' bytesize - or make a "numpy-size to netcdf-size' conversion table here ...
             getattr(self, vname).long_name = ""
             getattr(self, vname).standard_name = vname
             getattr(self, vname).units = "unknown"
@@ -232,6 +246,7 @@ class ParticleFile(object):
             if pset.size == 0:
                 logger.warning("ParticleSet is empty on writing as array at time %g" % time)
             else:
+                # self.max_index_written = -1
                 if deleted_only:
                     pset_towrite = pset
                 # == commented due to git rebase to master 27 02 2020 == #
@@ -243,8 +258,15 @@ class ParticleFile(object):
                     pset_towrite = [p for p in pset if time - np.abs(p.dt/2) <= p.time < time + np.abs(p.dt) and np.isfinite(p.id)]
                 if len(pset_towrite) > 0:
                     for var in self.var_names:
-                        data_dict[var] = np.array([getattr(p, var) for p in pset_towrite])
+                        if type(getattr(pset_towrite[0], var)) in [np.uint64, np.int64, np.uint32]:
+                            data_dict[var] = np.array([np.int32(getattr(p, var)) for p in pset_towrite])
+                        else:
+                            data_dict[var] = np.array([getattr(p, var) for p in pset_towrite])
+                    # ---- this doesn't work anymore cause the number of particles cannot be inferred from the IDs anymore ---- #
                     self.maxid_written = np.max([self.maxid_written, np.max(data_dict['id'])])
+                    # ==== does not work because the index changes depending on the MPI environment - it needs a running overview of how many particles there are ==== #
+                    # data_dict['index'] = np.array([i for i, p in enumerate(pset) if p.id in data_dict['id']], dtype=int) # self.max_index_written +
+                    # self.max_index_written = np.max([self.max_index_written, np.max(data_dict['index'])])
 
                 pset_errs = [p for p in pset_towrite if p.state != ErrorCode.Delete and abs(time-p.time) > 1e-3]
                 for p in pset_errs:
@@ -255,11 +277,12 @@ class ParticleFile(object):
                     self.time_written.append(time)
 
                 if len(self.var_names_once) > 0:
-                    first_write = [p for p in pset if (p.id not in self.written_once) and _is_particle_started_yet(p, time)]
-                    data_dict_once['id'] = np.array([p.id for p in first_write])
+                    first_write = [p for p in pset if (np.int32(p.id) not in self.written_once) and _is_particle_started_yet(p, time)]
+                    data_dict_once['id'] = np.array([np.int32(p.id) for p in first_write])
+                    # data_dict_once['index'] = np.array([i for i, p in enumerate(pset) if p.id in data_dict_once['id']], dtype=int)
                     for var in self.var_names_once:
                         data_dict_once[var] = np.array([getattr(p, var) for p in first_write])
-                    self.written_once += [p.id for p in first_write]
+                    self.written_once += data_dict_once['id'].tolist()
 
             if not deleted_only:
                 self.lasttime_written = time
@@ -279,7 +302,7 @@ class ParticleFile(object):
             self.file_list.append(tmpfilename)
 
         if len(data_dict_once) > 0:
-            tmpfilename = os.path.join(self.tempwritedir, str(len(self.file_list)) + '_once.npy')
+            tmpfilename = os.path.join(self.tempwritedir, str(len(self.file_list_once)) + '_once.npy')
             with open(tmpfilename, 'wb') as f:
                 np.save(f, data_dict_once)
             self.file_list_once.append(tmpfilename)
@@ -289,6 +312,9 @@ class ParticleFile(object):
         attrs_to_dump = ['name', 'var_names', 'var_names_once', 'time_origin', 'lonlatdepth_dtype',
                          'file_list', 'file_list_once', 'maxid_written', 'time_written', 'parcels_mesh',
                          'metadata']
+        # attrs_to_dump = ['name', 'var_names', 'var_names_once', 'time_origin', 'lonlatdepth_dtype',
+        #                  'file_list', 'file_list_once', 'max_index_written', 'time_written', 'parcels_mesh',
+        #                  'metadata']
         for a in attrs_to_dump:
             if hasattr(self, a):
                 pset_info[a] = getattr(self, a)
@@ -315,8 +341,11 @@ class ParticleFile(object):
         """
 
         data = np.nan * np.zeros((self.maxid_written+1, time_steps))
-        time_index = np.zeros(self.maxid_written+1, dtype=int)
-        t_ind_used = np.zeros(time_steps, dtype=int)
+        time_index = np.zeros(self.maxid_written+1, dtype=np.int32)
+
+        # data = np.nan * np.zeros((self.max_index_written+1, time_steps))
+        # time_index = np.zeros(self.max_index_written+1, dtype=int)
+        t_ind_used = np.zeros(time_steps, dtype=np.int32)
 
         # loop over all files
         for npyfile in file_list:
@@ -328,7 +357,9 @@ class ParticleFile(object):
                                    '"parcels_convert_npydir_to_netcdf %s" to convert these to '
                                    'a NetCDF file yourself.\nTo avoid this error, make sure you '
                                    'close() your ParticleFile at the end of your script.' % self.tempwritedir)
-            id_ind = np.array(data_dict["id"], dtype=int)
+            id_ind = np.array(data_dict["id"], dtype=np.int32)
+            # id_ind = np.array(data_dict["id"], dtype=np.uint64)
+            # id_ind = np.array(data_dict['index'])
             t_ind = time_index[id_ind] if 'once' not in file_list[0] else 0
             t_ind_used[t_ind] = 1
             data[id_ind, t_ind] = data_dict[var]
@@ -354,6 +385,7 @@ class ParticleFile(object):
         if len(temp_names) == 0:
             raise RuntimeError("No npy files found in %s" % self.tempwritedir_base)
 
+        # global_max_index_written = -1
         global_maxid_written = -1
         global_time_written = []
         global_file_list = []
@@ -363,11 +395,13 @@ class ParticleFile(object):
             if os.path.exists(tempwritedir):
                 pset_info_local = np.load(os.path.join(tempwritedir, 'pset_info.npy'), allow_pickle=True).item()
                 global_maxid_written = np.max([global_maxid_written, pset_info_local['maxid_written']])
+                # global_max_index_written = np.max([global_max_index_written, pset_info_local['max_index_written']])
                 global_time_written += pset_info_local['time_written']
                 global_file_list += pset_info_local['file_list']
                 if len(self.var_names_once) > 0:
                     global_file_list_once += pset_info_local['file_list_once']
         self.maxid_written = global_maxid_written
+        # self.max_index_written = global_max_index_written
         self.time_written = np.unique(global_time_written)
 
         for var in self.var_names:
@@ -376,6 +410,8 @@ class ParticleFile(object):
                 self.open_netcdf_file(data.shape)
             varout = 'z' if var == 'depth' else var
             getattr(self, varout)[:, :] = data
+        # idx_data = self.read_from_npy(global_file_list, len(self.time_written), 'index')
+        # getattr(self, 'index')[:, :] = idx_data
 
         if len(self.var_names_once) > 0:
             for var in self.var_names_once:

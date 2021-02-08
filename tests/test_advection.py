@@ -1,4 +1,5 @@
-from parcels import FieldSet, ParticleSet, ScipyParticle, JITParticle, ErrorCode
+from parcels import FieldSet, ScipyParticle, JITParticle, ErrorCode
+from parcels.particleset_vectorized import ParticleSet
 from parcels import AdvectionEE, AdvectionRK4, AdvectionRK45, AdvectionRK4_3D
 import numpy as np
 import pytest

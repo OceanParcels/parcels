@@ -15,12 +15,16 @@ try:
 except:
     MPI = None
 
-from parcels.compiler import GNUCompiler
+# from parcels.compiler import GNUCompiler
+from parcels.wrapping.code_compiler import GNUCompiler
+from parcels.particleset_vectorized import ParticleSet
+# from parcels.kernel_vectorized import Kernel
+from parcels.kernel_vec_benchmark import Kernel_Benchmark
+# from parcels.kernel_benchmark import Kernel_Benchmark
 from parcels.kernels.advection import AdvectionRK4
-from parcels.particleset import ParticleSet
 from parcels.particle import JITParticle
-from parcels.kernel_benchmark import Kernel_Benchmark, Kernel
 from parcels.tools.loggers import logger
+from parcels.tools import get_cache_dir, get_package_dir
 from parcels.tools.performance_logger import TimingLog, ParamLogging, Asynchronous_ParamLogging
 
 from resource import getrusage, RUSAGE_SELF
@@ -69,7 +73,6 @@ class ParticleSet_Benchmark(ParticleSet):
     def set_async_memlog_interval(self, interval):
         self.async_mem_log.measure_interval = interval
 
-    # @profile
     def execute(self, pyfunc=AdvectionRK4, endtime=None, runtime=None, dt=1.,
                 moviedt=None, recovery=None, output_file=None, movie_background_field=None,
                 verbose_progress=None, postIterationCallbacks=None, callbackdt=None):
@@ -105,7 +108,7 @@ class ParticleSet_Benchmark(ParticleSet):
         # check if pyfunc has changed since last compile. If so, recompile
         if self.kernel is None or (self.kernel.pyfunc is not pyfunc and self.kernel is not pyfunc):
             # Generate and store Kernel
-            if isinstance(pyfunc, Kernel):
+            if isinstance(pyfunc, Kernel_Benchmark):
                 self.kernel = pyfunc
             else:
                 self.kernel = self.Kernel(pyfunc)
@@ -113,7 +116,8 @@ class ParticleSet_Benchmark(ParticleSet):
             if self.ptype.uses_jit:
                 self.kernel.remove_lib()
                 cppargs = ['-DDOUBLE_COORD_VARIABLES'] if self.lonlatdepth_dtype == np.float64 else None
-                self.kernel.compile(compiler=GNUCompiler(cppargs=cppargs))
+                # self.kernel.compile(compiler=GNUCompiler(cppargs=cppargs))
+                self.kernel.compile(compiler=GNUCompiler(cppargs=cppargs, incdirs=[os.path.join(get_package_dir(), 'include'), os.path.join(get_package_dir()), "."], tmp_dir=get_cache_dir()))
                 self.kernel.load_lib()
 
         # Convert all time variables to seconds
@@ -324,7 +328,7 @@ class ParticleSet_Benchmark(ParticleSet):
             self.plot_log.advance_iteration()
             self.total_log.advance_iteration()
 
-        if output_file:
+        if output_file is not None:
             self.io_log.start_timing()
             output_file.write(self, time)
             self.io_log.stop_timing()

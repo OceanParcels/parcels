@@ -1,5 +1,6 @@
-from parcels import (FieldSet, Field, RectilinearZGrid, ParticleSet, BrownianMotion2D,
+from parcels import (FieldSet, Field, RectilinearZGrid, BrownianMotion2D,
                      SpatiallyVaryingBrownianMotion2D, JITParticle, ScipyParticle, Variable)
+from parcels.particleset_vectorized import ParticleSet
 from parcels import rng as random
 from datetime import timedelta as delta
 import numpy as np
