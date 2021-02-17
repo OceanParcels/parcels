@@ -69,7 +69,6 @@ class ParticleSet_Benchmark(ParticleSet):
     def set_async_memlog_interval(self, interval):
         self.async_mem_log.measure_interval = interval
 
-    # @profile
     def execute(self, pyfunc=AdvectionRK4, endtime=None, runtime=None, dt=1.,
                 moviedt=None, recovery=None, output_file=None, movie_background_field=None,
                 verbose_progress=None, postIterationCallbacks=None, callbackdt=None):
@@ -98,8 +97,11 @@ class ParticleSet_Benchmark(ParticleSet):
         :param movie_background_field: field plotted as background in the movie if moviedt is set.
                                        'vector' shows the velocity as a vector field.
         :param verbose_progress: Boolean for providing a progress bar for the kernel execution loop.
-        :param postIterationCallbacks: (Optional) Array of functions that are to be called after each iteration (post-process, non-Kernel)
-        :param callbackdt: (Optional, in conjecture with 'postIterationCallbacks) timestep inverval to (latestly) interrupt the running kernel and invoke post-iteration callbacks from 'postIterationCallbacks'
+        :param postIterationCallbacks: (Optional) Array of functions that are to be called after each
+                                        iteration (post-process, non-Kernel)
+        :param callbackdt: (Optional, in conjecture with 'postIterationCallbacks) timestep inverval
+                            to (latestly) interrupt the running kernel and invoke post-iteration
+                            callbacks from 'postIterationCallbacks'.
         """
 
         # check if pyfunc has changed since last compile. If so, recompile
@@ -142,10 +144,11 @@ class ParticleSet_Benchmark(ParticleSet):
         assert moviedt is None or moviedt >= 0, 'moviedt must be positive'
 
         # Set particle.time defaults based on sign of dt, if not set at ParticleSet construction
-        for p in self:
-            if np.isnan(p.time):
-                mintime, maxtime = self.fieldset.gridset.dimrange('time_full')
-                p.time = mintime if dt >= 0 else maxtime
+        for sublist in self._plist:
+            for p in sublist:
+                if np.isnan(p.time):
+                    mintime, maxtime = self.fieldset.gridset.dimrange('time_full')
+                    p.time = mintime if dt >= 0 else maxtime
 
         # Derive _starttime and endtime from arguments or fieldset defaults
         if runtime is not None and endtime is not None:
@@ -153,7 +156,8 @@ class ParticleSet_Benchmark(ParticleSet):
         # ====================================== #
         # ==== EXPENSIVE LIST COMPREHENSION ==== #
         # ====================================== #
-        _starttime = min([p.time for p in self]) if dt >= 0 else max([p.time for p in self])
+        # _starttime = min([p.time for p in self]) if dt >= 0 else max([p.time for p in self])
+        _starttime = min([p.time for sublist in self._plist for p in sublist]) if dt >= 0 else max([p.time for sublist in self._plist for p in sublist])
         if self.repeatdt is not None and self.repeat_starttime is None:
             self.repeat_starttime = _starttime
         if runtime is not None:
@@ -172,8 +176,10 @@ class ParticleSet_Benchmark(ParticleSet):
             execute_once = True
 
         # Initialise particle timestepping
-        for p in self:
-            p.dt = dt
+        # for p in self:
+        for sublist in self._plist:
+            for p in sublist:
+                p.dt = dt
 
         # First write output_file, because particles could have been added
         if output_file:
@@ -243,8 +249,11 @@ class ParticleSet_Benchmark(ParticleSet):
                                        lat=self.repeatlat, depth=self.repeatdepth,
                                        pclass=self.repeatpclass, lonlatdepth_dtype=self.lonlatdepth_dtype,
                                        partitions=False, pid_orig=self.repeatpid, **self.repeatkwargs)
-                for p in pset_new:
-                    p.dt = dt
+                # for p in pset_new:
+                #     p.dt = dt
+                for sublist in pset_new.particles_a:
+                    for p in sublist:
+                        p.dt = dt
                 self.add(pset_new)
                 self.mem_io_log.stop_timing()
                 self.mem_io_log.accumulate_timing()
@@ -309,7 +318,7 @@ class ParticleSet_Benchmark(ParticleSet):
             # else:
             #     mem_B_used_total = self.process.memory_info().rss
             # mem_B_used_total = self.process.memory_info().rss
-            mem_B_used_total = 0
+            # mem_B_used_total = 0
             if USE_RUSE_SYNC_MEMLOG:
                 mem_B_used_total = measure_mem_usage()
             else:
@@ -340,7 +349,7 @@ class ParticleSet_Benchmark(ParticleSet):
         # self.nparticle_log.advance_iteration(self.size)
         # self.compute_log.advance_iteration()
         # self.io_log.advance_iteration()
-        # self.mem_log.advance_iteration(self.process.memory_info().rss)
+        # self.mem_log.advance_iteration(<fill_value_here>)
         # self.mem_io_log.advance_iteration()
         # self.plot_log.advance_iteration()
         # self.total_log.advance_iteration()
@@ -409,6 +418,8 @@ class ParticleSet_Benchmark(ParticleSet):
         do_drawt_plot = False
         do_mem_plot = True
         do_mem_plot_async = True
+        if not USE_ASYNC_MEMLOG:
+            do_mem_plot_async = False
         do_npart_plot = True
         assert (len(plot_t) == len(plot_ct))
         if len(plot_t) != len(plot_iot):
@@ -466,11 +477,11 @@ class ParticleSet_Benchmark(ParticleSet):
             header_string = "target_N, start_N, final_N, avg_N, ncores, avg_kt_total[s], avg_kt_compute[s], avg_kt_io[s], avg_kt_plot[s], cum_t_total[s], cum_t_compute[s], com_t_io[s], cum_t_plot[s], max_mem[MB]\n"
             f.write(header_string)
             data_string = "{}, {}, {}, {}, {}, ".format(target_N, nparticles_t0, nparticles_tN, nparticles.mean(), ncores)
-            data_string += "{:2.10f}, {:2.10f}, {:2.10f}, {:2.10f}, ".format(total_times.mean(), compute_times.mean(), io_times.mean(), plot_times.mean())
+            data_string+= "{:2.10f}, {:2.10f}, {:2.10f}, {:2.10f}, ".format(total_times.mean(), compute_times.mean(), io_times.mean(), plot_times.mean())
             max_mem_sync = 0
             if memory_used is not None and len(memory_used) > 1:
                 memory_used = np.floor(memory_used / (1024*1024))
-                memory_used = memory_used.astype(dtype=np.uint32)
+                memory_used = memory_used.astype(dtype=np.int64)
                 max_mem_sync = memory_used.max()
             max_mem_async = 0
             if USE_ASYNC_MEMLOG:
@@ -479,5 +490,6 @@ class ParticleSet_Benchmark(ParticleSet):
                     memory_used_async = memory_used_async.astype(dtype=np.int64)
                     max_mem_async = memory_used_async.max()
             max_mem = max(max_mem_sync, max_mem_async)
-            data_string += "{:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {}".format(total_times.sum(), compute_times.sum(), io_times.sum(), plot_times.sum(), max_mem)
+            data_string+= "{:10.4f}, {:10.4f}, {:10.4f}, {:10.4f}, {}".format(total_times.sum(), compute_times.sum(), io_times.sum(), plot_times.sum(), max_mem)
             f.write(data_string)
+

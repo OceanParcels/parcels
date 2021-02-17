@@ -306,7 +306,8 @@ def test_pset_remove_index(fieldset, mode, npart=100):
     lat = np.linspace(1, 0, npart)
     pset = ParticleSet(fieldset, lon=lon, lat=lat, pclass=ptype[mode], lonlatdepth_dtype=np.float64)
     for ilon, ilat in zip(lon[::-1], lat[::-1]):
-        p = pset.remove(-1)
+        # p = pset.remove(-1)
+        p = pset.pop()
         assert(p.lon == ilon)
         assert(p.lat == ilat)
     assert(pset.size == 0)

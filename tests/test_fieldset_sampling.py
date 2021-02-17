@@ -451,13 +451,13 @@ def test_sampling_multigrids_non_vectorfield_from_file(mode, npart, tmpdir, chs,
     if mode == 'jit':
         assert np.all(np.array([len(p.xi) == fieldset.gridset.size for p in pset]))
         assert np.all(np.array([[p.xi[i] >= 0 for i in range(0, len(p.xi))] for p in pset]))
-        #assert np.all(pset.xi[:, fieldset.B.igrid] < xdim * 4)
-        #assert np.all(pset.xi[:, 0] < xdim)
-        #assert pset.yi.shape[0] == len(pset.lon)
-        #assert pset.yi.shape[1] == fieldset.gridset.size
-        #assert np.all(pset.yi >= 0)
-        #assert np.all(pset.yi[:, fieldset.B.igrid] < ydim * 3)
-        #assert np.all(pset.yi[:, 0] < ydim)
+        # assert np.all(pset.xi[:, fieldset.B.igrid] < xdim * 4)
+        # assert np.all(pset.xi[:, 0] < xdim)
+        # assert pset.yi.shape[0] == len(pset.lon)
+        # assert pset.yi.shape[1] == fieldset.gridset.size
+        # assert np.all(pset.yi >= 0)
+        # assert np.all(pset.yi[:, fieldset.B.igrid] < ydim * 3)
+        # assert np.all(pset.yi[:, 0] < ydim)
 
 
 @pytest.mark.parametrize('mode', ['jit', 'scipy'])
@@ -493,13 +493,13 @@ def test_sampling_multigrids_non_vectorfield(mode, npart):
     if mode == 'jit':
         assert np.all(np.array([len(p.xi) == fieldset.gridset.size for p in pset]))
         assert np.all(np.array([[p.xi[i] >= 0 for i in range(0, len(p.xi))] for p in pset]))
-        #assert np.all(pset.xi[:, fieldset.B.igrid] < xdim * 4)
-        #assert np.all(pset.xi[:, 0] < xdim)
-        #assert pset.yi.shape[0] == len(pset.lon)
-        #assert pset.yi.shape[1] == fieldset.gridset.size
-        #assert np.all(pset.yi >= 0)
-        #assert np.all(pset.yi[:, fieldset.B.igrid] < ydim * 3)
-        #assert np.all(pset.yi[:, 0] < ydim)
+        # assert np.all(pset.xi[:, fieldset.B.igrid] < xdim * 4)
+        # assert np.all(pset.xi[:, 0] < xdim)
+        # assert pset.yi.shape[0] == len(pset.lon)
+        # assert pset.yi.shape[1] == fieldset.gridset.size
+        # assert np.all(pset.yi >= 0)
+        # assert np.all(pset.yi[:, fieldset.B.igrid] < ydim * 3)
+        # assert np.all(pset.yi[:, 0] < ydim)
 
 
 @pytest.mark.parametrize('mode', ['jit', 'scipy'])
@@ -521,7 +521,9 @@ def test_sampling_multiple_grid_sizes(mode, ugridfactor):
         assert fieldset.U.grid is fieldset.V.grid
     pset.execute(AdvectionRK4, runtime=10, dt=1)
     assert np.isclose(pset[0].lon, 0.8)
-    assert np.all((pset[0].xi >= 0) & (pset[0].xi < xdim*ugridfactor))
+    if mode == 'jit':
+        # assert np.all((pset[0].xi >= 0) & (pset[0].xi < xdim*ugridfactor))
+        assert np.all(np.array([[p.xi[i] >= 0 & p.xi[i] < xdim*ugridfactor for i in range(0, len(p.xi))] for p in pset]))
 
 
 def test_multiple_grid_addlater_error():
@@ -547,30 +549,6 @@ def test_multiple_grid_addlater_error():
     except:
         fail = True
     assert fail
-
-
-@pytest.mark.parametrize('mode', ['jit', 'scipy'])
-def test_sampling_multiple_grid_sizes(mode):
-    """Sampling test that tests for FieldSet with different grid sizes
-
-    While this currently works fine in Scipy mode, it fails in JIT mode with
-    an out_of_bounds_error because there is only one (xi, yi, zi) for each particle
-    A solution would be to define xi, yi, zi for each field separately
-    """
-    xdim = 10
-    ydim = 20
-    gf = 10  # factor by which the resolution of U is higher than of V
-    U = Field('U', np.zeros((ydim*gf, xdim*gf), dtype=np.float32),
-              lon=np.linspace(0., 1., xdim*gf, dtype=np.float32),
-              lat=np.linspace(0., 1., ydim*gf, dtype=np.float32))
-    V = Field('V', np.zeros((ydim, xdim), dtype=np.float32),
-              lon=np.linspace(0., 1., xdim, dtype=np.float32),
-              lat=np.linspace(0., 1., ydim, dtype=np.float32))
-    fieldset = FieldSet(U, V)
-    pset = ParticleSet(fieldset, pclass=pclass(mode), lon=[0.8], lat=[0.9])
-
-    pset.execute(AdvectionRK4, runtime=10, dt=1)
-    assert np.isclose(pset[0].lon, 0.8)
 
 
 @pytest.mark.parametrize('mode', ['jit', 'scipy'])

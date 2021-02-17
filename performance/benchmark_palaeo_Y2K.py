@@ -263,7 +263,7 @@ if __name__ == "__main__":
     time_in_years = int(time_in_days/366.0)
     with_GC = args.useGC
 
-    branch = "benchmarking"
+    branch = "LoA"
     computer_env = "local/unspecified"
     scenario = "palaeo-parcels"
     headdir = ""
@@ -399,8 +399,10 @@ if __name__ == "__main__":
     # pset.execute(kernels, runtime=delta(days=365*9), dt=delta(minutes=-20), output_file=pfile, verbose_progress=False,
     # recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationCallbacks=postProcessFuncs)
     # postIterationCallbacks=postProcessFuncs, callbackdt=delta(hours=12)
-    pset.execute(kernels, runtime=delta(days=time_in_days), dt=delta(hours=-12), output_file=pfile, verbose_progress=False, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationCallbacks=postProcessFuncs, callbackdt=np.infty)
-    
+    pset.execute(kernels, runtime=delta(days=time_in_days), dt=delta(hours=-12), output_file=pfile,
+                 verbose_progress=False, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle},
+                 postIterationCallbacks=postProcessFuncs, callbackdt=np.infty)
+
     if MPI:
         mpi_comm = MPI.COMM_WORLD
         mpi_rank = mpi_comm.Get_rank()

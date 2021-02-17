@@ -84,8 +84,8 @@ class Kernel_Benchmark(Kernel):
     def execute_jit(self, pset, endtime, dt):
         """Invokes JIT engine to perform the core update loop"""
         self._io_timings.start_timing()
-        if len(pset.particles) > 0:
-            assert pset.fieldset.gridset.size == len(pset.particles[0].xi), \
+        if len(pset.particles_a) > 0 and pset.particles_a[0].shape[0]:
+            assert pset.fieldset.gridset.size == len(pset.particles_a[0][0].xi), \
                 'FieldSet has different amount of grids than Particle.xi. Have you added Fields after creating the ParticleSet?'
         for g in pset.fieldset.gridset.grids:
             g.cstruct = None  # This force to point newly the grids from Python to C
@@ -118,15 +118,16 @@ class Kernel_Benchmark(Kernel):
 
         fargs = [byref(f.ctypes_struct) for f in self.field_args.values()]
         fargs += [c_double(f) for f in self.const_args.values()]
-        particle_data = pset._particle_data.ctypes.data_as(c_void_p)
         self._mem_io_timings.stop_timing()
         self._mem_io_timings.accumulate_timing()
 
         self._compute_timings.start_timing()
-        self._function(c_int(len(pset)), particle_data,
-                       c_double(endtime),
-                       c_double(dt),
-                       *fargs)
+        for subfield_c in pset.particles_c:
+            particle_data = subfield_c.ctypes.data_as(c_void_p)
+            self._function(c_int(subfield_c.shape[0]), particle_data,
+                           c_double(endtime), c_double(dt),
+                           *fargs)
+
         self._compute_timings.stop_timing()
         self._compute_timings.accumulate_timing()
 
@@ -155,79 +156,81 @@ class Kernel_Benchmark(Kernel):
             self._mem_io_timings.accumulate_timing()
 
         self._compute_timings.start_timing()
-        for p in pset.particles:
-            ptype = p.getPType()
-            # Don't execute particles that aren't started yet
-            sign_end_part = np.sign(endtime - p.time)
+        # for p in pset.particles:
+        for subfield in pset.particles_a:
+            for p in subfield:
+                ptype = p.getPType()
+                # Don't execute particles that aren't started yet
+                sign_end_part = np.sign(endtime - p.time)
 
-            dt_pos = min(abs(p.dt), abs(endtime - p.time))
+                dt_pos = min(abs(p.dt), abs(endtime - p.time))
 
-            # ==== numerically stable; also making sure that continuously-recovered particles do end successfully,
-            # as they fulfil the condition here on entering at the final calculation here. ==== #
-            if ((sign_end_part != sign_dt) or np.isclose(dt_pos, 0)) and not np.isclose(dt, 0):
-                if abs(p.time) >= abs(endtime):
-                    p.state = ErrorCode.Success
-                continue
+                # ==== numerically stable; also making sure that continuously-recovered particles do end successfully,
+                # as they fulfil the condition here on entering at the final calculation here. ==== #
+                if ((sign_end_part != sign_dt) or np.isclose(dt_pos, 0)) and not np.isclose(dt, 0):
+                    if abs(p.time) >= abs(endtime):
+                        p.state = ErrorCode.Success
+                    continue
 
-            while p.state in [ErrorCode.Evaluate, ErrorCode.Repeat] or np.isclose(dt, 0):
+                while p.state in [ErrorCode.Evaluate, ErrorCode.Repeat] or np.isclose(dt, 0):
 
-                for var in ptype.variables:
-                    p_var_back[var.name] = getattr(p, var.name)
-                try:
-                    pdt_prekernels = sign_dt * dt_pos
-                    p.dt = pdt_prekernels
-                    state_prev = p.state
-                    res = self.pyfunc(p, pset.fieldset, p.time)
-                    if res is None:
-                        res = ErrorCode.Success
-
-                    if res is ErrorCode.Success and p.state != state_prev:
-                        res = p.state
-
-                    if res == ErrorCode.Success and not np.isclose(p.dt, pdt_prekernels):
-                        res = ErrorCode.Repeat
-
-                except FieldOutOfBoundError as fse_xy:
-                    res = ErrorCode.ErrorOutOfBounds
-                    p.exception = fse_xy
-                except FieldOutOfBoundSurfaceError as fse_z:
-                    res = ErrorCode.ErrorThroughSurface
-                    p.exception = fse_z
-                except TimeExtrapolationError as fse_t:
-                    res = ErrorCode.ErrorTimeExtrapolation
-                    p.exception = fse_t
-                except Exception as e:
-                    res = ErrorCode.Error
-                    p.exception = e
-
-                # Handle particle time and time loop
-                if res in [ErrorCode.Success, ErrorCode.Delete]:
-                    # Update time and repeat
-                    p.time += p.dt
-                    p.update_next_dt()
-                    dt_pos = min(abs(p.dt), abs(endtime - p.time))
-
-                    sign_end_part = np.sign(endtime - p.time)
-                    if res != ErrorCode.Delete and not np.isclose(dt_pos, 0) and (sign_end_part == sign_dt):
-                        res = ErrorCode.Evaluate
-                    if sign_end_part != sign_dt:
-                        dt_pos = 0
-
-                    p.state = res
-                    if np.isclose(dt, 0):
-                        break
-                else:
-                    p.state = res
-                    # Try again without time update
                     for var in ptype.variables:
-                        if var.name not in ['dt', 'state']:
-                            setattr(p, var.name, p_var_back[var.name])
-                    dt_pos = min(abs(p.dt), abs(endtime - p.time))
+                        p_var_back[var.name] = getattr(p, var.name)
+                    try:
+                        pdt_prekernels = sign_dt * dt_pos
+                        p.dt = pdt_prekernels
+                        state_prev = p.state
+                        res = self.pyfunc(p, pset.fieldset, p.time)
+                        if res is None:
+                            res = ErrorCode.Success
 
-                    sign_end_part = np.sign(endtime - p.time)
-                    if sign_end_part != sign_dt:
-                        dt_pos = 0
-                    break
+                        if res is ErrorCode.Success and p.state != state_prev:
+                            res = p.state
+
+                        if res == ErrorCode.Success and not np.isclose(p.dt, pdt_prekernels):
+                            res = ErrorCode.Repeat
+
+                    except FieldOutOfBoundError as fse_xy:
+                        res = ErrorCode.ErrorOutOfBounds
+                        p.exception = fse_xy
+                    except FieldOutOfBoundSurfaceError as fse_z:
+                        res = ErrorCode.ErrorThroughSurface
+                        p.exception = fse_z
+                    except TimeExtrapolationError as fse_t:
+                        res = ErrorCode.ErrorTimeExtrapolation
+                        p.exception = fse_t
+                    except Exception as e:
+                        res = ErrorCode.Error
+                        p.exception = e
+
+                    # Handle particle time and time loop
+                    if res in [ErrorCode.Success, ErrorCode.Delete]:
+                        # Update time and repeat
+                        p.time += p.dt
+                        p.update_next_dt()
+                        dt_pos = min(abs(p.dt), abs(endtime - p.time))
+
+                        sign_end_part = np.sign(endtime - p.time)
+                        if res != ErrorCode.Delete and not np.isclose(dt_pos, 0) and (sign_end_part == sign_dt):
+                            res = ErrorCode.Evaluate
+                        if sign_end_part != sign_dt:
+                            dt_pos = 0
+
+                        p.state = res
+                        if np.isclose(dt, 0):
+                            break
+                    else:
+                        p.state = res
+                        # Try again without time update
+                        for var in ptype.variables:
+                            if var.name not in ['dt', 'state']:
+                                setattr(p, var.name, p_var_back[var.name])
+                        dt_pos = min(abs(p.dt), abs(endtime - p.time))
+
+                        sign_end_part = np.sign(endtime - p.time)
+                        if sign_end_part != sign_dt:
+                            dt_pos = 0
+                        break
         self._compute_timings.stop_timing()
         self._compute_timings.accumulate_timing()
 

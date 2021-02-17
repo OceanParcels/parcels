@@ -258,3 +258,7 @@ class JITParticle(ScipyParticle):
                 setattr(self, index, -1*np.ones((fieldset.gridset.size), dtype=np.int32))
             setattr(self, index+'p', getattr(self, index).ctypes.data_as(c_void_p))
             setattr(self, 'c'+index, getattr(self, index+'p').value)
+
+    def update_cptr(self, new_ptr):
+        # np.copyto(new_ptr, self._cptr)
+        self._cptr = new_ptr

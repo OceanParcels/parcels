@@ -248,19 +248,21 @@ class Asynchronous_ParamLogging():
         if self.differential_measurement:
             self.async_run_diff_measurement()
         else:
-            pass
+            self.async_run_measurement()
 
     def async_run_diff_measurement(self):
         if self._measure_start_value is None:
             self._measure_start_value = self._measure_func()
             self._measure_partial_values.append(0)
         while not self._event.is_set():
-            self._measure_partial_values.append( self._measure_func()-self._measure_start_value )
+            value = self._measure_func()-self._measure_start_value
+            self._measure_partial_values.append( value )
             sleep(self._measure_interval)
 
     def async_run_measurement(self):
         while not self._event.is_set():
-            self._measure_partial_values.append( self.measure_func() )
+            value = self.measure_func()
+            self._measure_partial_values.append( value )
             sleep(self.measure_interval)
 
     def start_partial_measurement(self):
@@ -270,7 +272,7 @@ class Asynchronous_ParamLogging():
             del self._measure_partial_values[:]
             self._measure_partial_values = []
         self._event = Event()
-        self._thread = Thread(target=self.async_run_measurement)
+        self._thread = Thread(target=self.async_run)
         self._thread.start()
 
     def stop_partial_measurement(self):
@@ -284,9 +286,12 @@ class Asynchronous_ParamLogging():
         sleep(self._measure_interval)
         del self._thread
         self._thread = None
+        self._event.clear()
+        del self._event
+        self._event = None
         self._measure_start_value = None
         # param_partial_mean = np.array(self._measure_partial_values).mean()
-        param_partial_mean = np.array(self._measure_partial_values).max()
+        param_partial_mean = np.array(self._measure_partial_values).max(initial=0)
         self.advance_iteration(param_partial_mean)
 
     def get_params(self):

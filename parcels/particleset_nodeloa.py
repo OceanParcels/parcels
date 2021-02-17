@@ -154,18 +154,22 @@ class ParticleSet(object):
             'lon lat depth precision should be set to either np.float32 or np.float64'
         JITParticle.set_lonlatdepth_dtype(self.lonlatdepth_dtype)
 
+        # == this should be a list not a dict! == #
         self._pid_mapping_bounds = []  # plist bracket_index -> (min_id, max_id, size_bracket)
+        # ======================================= #
         self.nlist_limit = 4096
         # self.particles = np.empty(lon.size, dtype=pclass)
         assert lon.shape[0] == lat.shape[0], ('Length of lon and lat do not match.')
-        self._plist = []
+        # self._plist = []
+        self._plist = collections.deque([])
+        self._bracket_no = 0
         start_index = 0
         end_index = 0
         while end_index < lon.shape[0]:
             end_index = min(lon.shape[0], start_index + self.nlist_limit)
             self._plist.append(np.empty(end_index-start_index, dtype=pclass))
             self._pid_mapping_bounds.append((np.iinfo(np.int32).max, np.iinfo(np.int32).min, end_index-start_index))
-            bracket_index = len(self._plist)-1
+            # bracket_index = len(self._plist)-1
             start_index = end_index
             # end_index = min(lon.shape[0], end_index+self.nlist_limit)
         # self._particle_data = None
@@ -181,7 +185,8 @@ class ParticleSet(object):
         # to update the particles, reallocate the c-pointer field, and then just value-copy the particle data into the c-memory.
         # nparticles = self.allocate_cptrs()
         if self._ptype.uses_jit:
-            self._plist_c = []
+            # self._plist_c = []
+            self._plist_c = collections.deque([])
             for bracket_index in range(len(self._plist)):
                 self._plist_c.append(np.empty(self._pid_mapping_bounds[bracket_index][2], dtype=self.ptype.dtype))
 
@@ -189,23 +194,67 @@ class ParticleSet(object):
             # == Initialise from arrays of lon/lat coordinates == #
             # assert self.particles.size == lon.size and self.particles.size == lat.size, ('Size of ParticleSet does not match length of lon and lat.')
 
+            nbrackets = 0
             for i in range(lon.size):
                 bracket_index = int(float(i)/self.nlist_limit)
                 slot_index = int(i % self.nlist_limit)
-                self._plist[bracket_index][slot_index] = pclass(lon[i], lat[i], pid[i], fieldset=fieldset, depth=depth[i], cptr=self.cptr(bracket_index, slot_index), time=time[i])
+                # self._plist[bracket_index][slot_index] = pclass(lon[i], lat[i], pid[i], fieldset=fieldset, depth=depth[i], cptr=self.cptr(bracket_index, slot_index), time=time[i])
+                self.current_p_node()[slot_index] = pclass(lon[i], lat[i], pid[i], fieldset=fieldset, depth=depth[i], cptr=self.current_c_node()(slot_index), time=time[i])
                 bracket_info = self._pid_mapping_bounds[bracket_index]
                 self._pid_mapping_bounds[bracket_index] = (min(pid[i], bracket_info[0]), max(pid[i], bracket_info[1]), bracket_info[2])
                 # self.particles[i] = pclass(lon[i], lat[i], pid[i], fieldset=fieldset, depth=depth[i], cptr=cptr(i), time=time[i])
                 # == Set other Variables if provided == #
                 for kwvar in kwargs:
-                    if not hasattr(self._plist[bracket_index][slot_index], kwvar):
+                    # if not hasattr(self._plist[bracket_index][slot_index], kwvar):
+                    if not hasattr(self.current_p_node()[slot_index], kwvar):
                         raise RuntimeError('Particle class does not have Variable %s' % kwvar)
-                    setattr(self._plist[bracket_index][slot_index], kwvar, kwargs[kwvar][i])
+                    # setattr(self._plist[bracket_index][slot_index], kwvar, kwargs[kwvar][i])
+                    setattr(self.current_p_node()[slot_index], kwvar, kwargs[kwvar][i])
         #             if not hasattr(self.particles[i], kwvar):
         #                 raise RuntimeError('Particle class does not have Variable %s' % kwvar)
         #             setattr(self.particles[i], kwvar, kwargs[kwvar][i])
+                if slot_index >= (self.nlist_limit-1):
+                    self.next()
+            self.reset_current_node()
         else:
             raise ValueError("Latitude and longitude required for generating ParticleSet")
+
+    def next(self):
+        self._bracket_no += 1
+        self._plist.rotate(-1)
+        if self._plist_c is not None and self._ptype.uses_jit:
+            self._plist_c.rotate(-1)
+
+    def prev(self):
+        self._bracket_no -= 1
+        self._plist.rotate(1)
+        if self._plist_c is not None and self._ptype.uses_jit:
+            self._plist_c.rotate(1)
+
+    def reset_current_node(self):
+        self._plist.rotate(self._bracket_no)
+        if self._plist_c is not None and self._ptype.uses_jit:
+            self._plist_c.rotate(self._bracket_no)
+        self._bracket_no = 0
+
+    @property
+    def current_p_node(self):
+        return self._plist[0]
+
+    @current_p_node.setter
+    def current_p_node(self, value):
+        self._plist[0] = value
+
+    @property
+    def current_c_node(self):
+        if self._plist_c is not None and self._ptype.uses_jit:
+            return self._plist_c[0]
+        return None
+
+    @current_c_node.setter
+    def current_c_node(self, value):
+        if self._plist_c is not None and self._ptype.uses_jit:
+            self._plist_c[0] = value
 
     @property
     def particles(self):
@@ -213,8 +262,10 @@ class ParticleSet(object):
             return None
         result = self._plist[0]
         if len(self._plist) > 1:
-            for bracket_index in range(0, len(self._plist)):
-                result = np.concatenate((result, self._plist[bracket_index]), axis=0)
+            # for bracket_index in range(0, len(self._plist)):
+            #     result = np.concatenate((result, self._plist[bracket_index]), axis=0)
+            for bracket in self._plist:
+                result = np.concatenate((result, bracket), axis=0)
         return result
         # return self._plist
 
@@ -239,6 +290,9 @@ class ParticleSet(object):
         return self._pclass
 
     def cptr(self, bracket_index, slot_index):
+        """
+        THIS IS EXTREMELY SLOW
+        """
         # if self._particle_data is None:
         if self._plist_c is None:
             return None
@@ -246,6 +300,15 @@ class ParticleSet(object):
             return self._plist_c[bracket_index][slot_index]
         else:
             return None
+
+    # def allocate_cptrs(self):
+    #     nparticles = 0
+    #     for sublist in self.plist:
+    #         nparticles += sublist.shape[0]
+    #     # == Allocate underlying data for C-allocated particles == #
+    #     if self.ptype.uses_jit:
+    #         self._particle_data = np.empty(nparticles, dtype=self.ptype.dtype)
+    #     return nparticles
 
     def get_list_array_index(self, pdata):
         """Searches for the list-array indices for a given particle.
@@ -269,19 +332,21 @@ class ParticleSet(object):
             bracket_index = 0
             bracket_info = self.pid_mapping_bounds[bracket_index]
             while bracket_index < len(self._plist) and ((pdata.id < bracket_info[0]) or (pdata.id > bracket_info[1])):
-                # nparticle += bracket_info[2]
                 bracket_index += 1
                 bracket_info = self.pid_mapping_bounds[bracket_index]
+                self.next()
             if bracket_index >= len(self._plist):
                 logger.warn_once("ParticleSet.get_cptr_index() - requested particle ({}) not found.".format(pdata))
+                self.reset_current_node()
                 return -1
             slot_index = 0
-            while (slot_index < self._plist[bracket_index].shape[0]) and (self._plist[bracket_index][slot_index].id != pdata.id):
+            while (slot_index < self.current_p_node().shape[0]) and (self.current_p_node()[slot_index].id != pdata.id):
                 slot_index += 1
-                # nparticle += 1
-            if slot_index >= self._plist[bracket_index].shape[0]:
+            if slot_index >= self.current_p_node().shape[0]:
                 logger.warn_once("ParticleSet.get_cptr_index() - requested particle ({}) not found.".format(pdata))
+                self.reset_current_node()
                 return -1
+            self.reset_current_node()
             return (bracket_index, slot_index)
 
     def get_list_array_index_by_PID(self, pdata):
@@ -490,6 +555,7 @@ class ParticleSet(object):
         for bracket_index in range(len(self._pid_mapping_bounds)):
             nparticles += self._pid_mapping_bounds[bracket_index][2]
         return nparticles
+        # return self.particles.size
 
     def __repr__(self):
         return "\n".join([str(p) for sublist in self._plist for p in sublist])
@@ -502,16 +568,29 @@ class ParticleSet(object):
         bracket_index = 0
         start_index = 0
         end_index = self._pid_mapping_bounds[bracket_index][2]
+        # while start_index<key:
+        # while end_index >= key:
         while key >= end_index:
             start_index = end_index
             end_index = start_index+self._pid_mapping_bounds[bracket_index][2]
             bracket_index += 1
+            self.next()
         slot_index = key - start_index
-        return self._plist[bracket_index][slot_index]
+        value = self.current_p_node[slot_index]
+        self.reset_current_node()
+        return value
+    #     return self._plist[bracket_index][slot_index]
+    #     return self.particles[key]
 
     def __setitem__(self, key, value):
         assert isinstance(key, tuple) and len(key) == 2, ("Error: trying to set/address data item without (bracket_index, slot_index) key.")
-        self._plist[key[0]][key[1]] = value
+        # self._plist[key[0]][key[1]] = value
+        for i in range(0, key[0]):
+            self.next()
+        self.current_p_node[key[1]] = value
+        self.reset_current_node()
+    # def __setitem__(self, key, value):
+    #     self.particles[key] = value
 
     def __iadd__(self, particles):
         self.add(particles)
@@ -540,8 +619,17 @@ class ParticleSet(object):
         else:
             raise NotImplementedError('Only ParticleSets can be added to a ParticleSet')
 
-        # for sublist in particles.particles_c:
-        #     self._plist_c.append(sublist)
+        # if isinstance(particles, ParticleSet):
+        #     particles = particles.particles
+        # else:
+        #     raise NotImplementedError('Only ParticleSets can be added to a ParticleSet')
+        # self.particles = np.append(self.particles, particles)
+        # if self.ptype.uses_jit:
+        #     particles_data = [p._cptr for p in particles]
+        #     self._particle_data = np.append(self._particle_data, particles_data)
+        #     # Update C-pointer on particles
+        #     for p, pdata in zip(self.particles, self._particle_data):
+        #         p._cptr = pdata
 
     def _merge_brackets_(self):
         lw_bound_nlist = int(self.nlist_limit / 2)
@@ -549,32 +637,46 @@ class ParticleSet(object):
         while nmerges > 0:
             nmerges = 0
             trg_bracket = None
+            trg_bracket_c = None
             trg_bracket_index = -1
             src_bracket = None
+            src_bracket_c = None
             src_bracket_index = -1
             for bracket_index in range(len(self._plist)):
                 if self._pid_mapping_bounds[bracket_index][2] < lw_bound_nlist:
                     if trg_bracket is None:
                         trg_bracket = self._plist[bracket_index]
+                        if self._plist_c is not None and self.ptype.uses_jit:
+                            trg_bracket_c = self._plist_c[bracket_index]
                         trg_bracket_index = bracket_index
                     elif src_bracket is None:
                         src_bracket = self._plist[bracket_index]
+                        if self._plist_c is not None and self.ptype.uses_jit:
+                            src_bracket_c = self._plist_c[bracket_index]
                         src_bracket_index = bracket_index
                 if src_bracket is not None and trg_bracket is not None:
                     break
             if src_bracket is not None and trg_bracket is not None:
-                self._plist[trg_bracket_index] = np.append(trg_bracket, src_bracket)
-                local_ids = np.array([p.id for p in self._plist[trg_bracket_index]])
+                for i in range(0, trg_bracket_index):
+                    self.next()
+                # self._plist[trg_bracket_index] = np.append(trg_bracket, src_bracket)
+                self.current_p_node = np.append(trg_bracket, src_bracket)
+                # local_ids = np.array([p.id for p in self._plist[trg_bracket_index]])
+                local_ids = np.array([p.id for p in self.current_p_node])
                 self.pid_mapping_bounds[trg_bracket_index] = (np.min(local_ids), np.max(local_ids), local_ids.shape[0])
                 if self.ptype.uses_jit:
-                    self._plist_c[trg_bracket_index] = np.append(self._plist_c[trg_bracket_index], self._plist_c[src_bracket_index])
-                    for p, pdata in zip(self._plist[trg_bracket_index], self._plist_c[trg_bracket_index]):
+                    # self._plist_c[trg_bracket_index] = np.append(self._plist_c[trg_bracket_index], self._plist_c[src_bracket_index])
+                    self.current_c_node = np.append(trg_bracket_c, src_bracket_c)
+                    # for p, pdata in zip(self._plist[trg_bracket_index], self._plist_c[trg_bracket_index]):
+                    for p, pdata in zip(self.current_p_node, self.current_c_node):
                         p._cptr = pdata
+                self._plist.pop(src_bracket_index)
                 # self._plist.remove(self._plist[src_bracket_index])
-                del self._plist[src_bracket_index]
+                # del self._plist[src_bracket_index]
                 if self.ptype.uses_jit:
+                    self._plist_c.pop(src_bracket_index)
                     # self._plist_c.remove(self._plist_c[src_bracket_index])
-                    del self._plist_c[src_bracket_index]
+                    # del self._plist_c[src_bracket_index]
                 # self._pid_mapping_bounds.remove(self._pid_mapping_bounds[src_bracket_index])
                 del self._pid_mapping_bounds[src_bracket_index]
                 nmerges += 1
@@ -659,18 +761,41 @@ class ParticleSet(object):
             self._remove_(bracket_index, local_indices)
         self._merge_brackets_()
 
+        # if isinstance(indices, collections.Iterable):
+        #     particles = [self.particles[i] for i in indices]
+        # else:
+        #     particles = self.particles[indices]
+        # self.particles = np.delete(self.particles, indices)
+        # if self.ptype.uses_jit:
+        #     self._particle_data = np.delete(self._particle_data, indices)
+        #     # == Update C-pointer on particles == #
+        #     for p, pdata in zip(self.particles, self._particle_data):
+        #         p._cptr = pdata
+        # return particles
+
     def remove_local_particles(self, bracket_index, local_indices):
         return self._remove_(bracket_index, local_indices)
 
     def _remove_(self, bracket_index, local_indices):
+        # if isinstance(indices, collections.Iterable):
+        #     particles = [self.particles[i] for i in indices]
+        # else:
+        #     particles = self.particles[indices]
         if isinstance(local_indices, collections.Iterable):
             local_indices = np.array(local_indices)
-        return_p = self._plist[bracket_index][local_indices]
-        self._plist[bracket_index] = np.delete(self._plist[bracket_index], local_indices)
+        for i in range(0, bracket_index):
+            self.next()
+        # return_p = self._plist[bracket_index][local_indices]
+        return_p = self.current_p_node[local_indices]
+        # self._plist[bracket_index] = np.delete(self._plist[bracket_index], local_indices)
+        self.current_p_node = np.delete(self.current_p_node, local_indices)
         if self._ptype.uses_jit:
-            self._plist_c[bracket_index] = np.delete(self._plist_c[bracket_index], local_indices)
-        if self._plist[bracket_index] is not None and self._plist[bracket_index].shape[0] > 0:
-            local_ids = np.array([p.id for p in self._plist[bracket_index]])
+            # self._plist_c[bracket_index] = np.delete(self._plist_c[bracket_index], local_indices)
+            self.current_c_node = np.delete(self.current_c_node, local_indices)
+        # if self._plist[bracket_index] is not None and self._plist[bracket_index].shape[0] > 0:
+        if self.current_p_node is not None and self.current_p_node.shape[0] > 0:
+            # local_ids = np.array([p.id for p in self._plist[bracket_index]])
+            local_ids = np.array([p.id for p in self.current_p_node])
             self.pid_mapping_bounds[bracket_index] = (np.min(local_ids), np.max(local_ids), local_ids.shape[0])
             if self._ptype.uses_jit:
                 # == Update C-pointer on particles == #
@@ -678,13 +803,17 @@ class ParticleSet(object):
                 # for p, pdata in zip(self._plist[bracket_index], self._plist_c[bracket_index]):
                 #    p._cptr = pdata
                 # -- END -- #
-                for slot_index in range(len(self._plist[bracket_index])):
-                    self._plist[bracket_index][slot_index].update_cptr(self._plist_c[bracket_index][slot_index])
+                # for slot_index in range(len(self._plist[bracket_index])):
+                #     self._plist[bracket_index][slot_index].update_cptr(self._plist_c[bracket_index][slot_index])
+                for slot_index in range(len(self.current_p_node)):
+                    self.current_p_node[slot_index].update_cptr(self.current_p_node[slot_index])
         else:
             if len(self._plist) > 1:
-                self._plist.remove(self._plist[bracket_index])
+                # self._plist.remove(self._plist[bracket_index])
+                self._plist.remove(self.current_p_node)
                 if self._ptype.uses_jit:
-                    self._plist_c.remove(self._plist_c[bracket_index])
+                    # self._plist_c.remove(self._plist_c[bracket_index])
+                    self._plist_c.remove(self.current_c_node)
                 self._pid_mapping_bounds.remove(self._pid_mapping_bounds[bracket_index])
             else:
                 self.pid_mapping_bounds[bracket_index] = (np.iinfo(np.int32).max, np.iinfo(np.int32).min, 0)
@@ -927,6 +1056,16 @@ class ParticleSet(object):
                 except:
                     _, _, _, xi, yi, _ = field.search_indices(p.lon, p.lat, p.depth, 0, 0, search2D=True)
                 density[yi, xi] += particle_val[bracket_index][slot_index]
+
+        # for pi, p in enumerate(self.particles):
+        #     try:  # breaks if either p.xi, p.yi, p.zi, p.ti do not exist (in scipy) or field not in fieldset
+        #         if p.ti[field.igrid] < 0:  # xi, yi, zi, ti, not initialised
+        #             raise('error')
+        #         xi = p.xi[field.igrid]
+        #         yi = p.yi[field.igrid]
+        #     except:
+        #         _, _, _, xi, yi, _ = field.search_indices(p.lon, p.lat, p.depth, 0, 0, search2D=True)
+        #     density[yi, xi] += particle_val[pi]
 
         if relative:
             psum = 0
