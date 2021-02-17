@@ -91,29 +91,15 @@ def perlin_fieldset_from_numpy(periodic_wrap=False, write_out=False):
 
     # Coordinates of the test fieldset (on A-grid in deg)
     lon = np.linspace(-a*0.5, a*0.5, img_shape[0], dtype=np.float32)
-    # sys.stdout.write("lon field: {}\n".format(lon.size))
     lat = np.linspace(-b*0.5, b*0.5, img_shape[1], dtype=np.float32)
-    # sys.stdout.write("lat field: {}\n".format(lat.size))
     totime = tsteps*tscale*24.0*60.0*60.0
     time = np.linspace(0., totime, tsteps, dtype=np.float64)
-    # sys.stdout.write("time field: {}\n".format(time.size))
 
     # Define arrays U (zonal), V (meridional)
     U = perlin2d.generate_fractal_noise_temporal2d(img_shape, tsteps, (perlinres[1], perlinres[2]), noctaves, perlin_persistence, max_shift=((-1, 2), (-1, 2)))
     U = np.transpose(U, (0,2,1))
-    # U = np.swapaxes(U, 1, 2)
-    # print("U-statistics - min: {:10.7f}; max: {:10.7f}; avg. {:10.7f}; std_dev: {:10.7f}".format(U.min(initial=0), U.max(initial=0), U.mean(), U.std()))
     V = perlin2d.generate_fractal_noise_temporal2d(img_shape, tsteps, (perlinres[1], perlinres[2]), noctaves, perlin_persistence, max_shift=((-1, 2), (-1, 2)))
     V = np.transpose(V, (0,2,1))
-    # V = np.swapaxes(V, 1, 2)
-    # print("V-statistics - min: {:10.7f}; max: {:10.7f}; avg. {:10.7f}; std_dev: {:10.7f}".format(V.min(initial=0), V.max(initial=0), V.mean(), V.std()))
-
-    # U = perlin3d.generate_fractal_noise_3d(img_shape, perlinres, noctaves, perlin_persistence) * scalefac
-    # U = np.transpose(U, (0,2,1))
-    # sys.stdout.write("U field shape: {} - [tdim][ydim][xdim]=[{}][{}][{}]\n".format(U.shape, time.shape[0], lat.shape[0], lon.shape[0]))
-    # V = perlin3d.generate_fractal_noise_3d(img_shape, perlinres, noctaves, perlin_persistence) * scalefac
-    # V = np.transpose(V, (0,2,1))
-    # sys.stdout.write("V field shape: {} - [tdim][ydim][xdim]=[{}][{}][{}]\n".format(V.shape, time.shape[0], lat.shape[0], lon.shape[0]))
 
     U *= scalefac
     V *= scalefac
@@ -253,7 +239,7 @@ if __name__=='__main__':
     nowtime = datetime.datetime.now()
     random.seed(nowtime.microsecond)
 
-    branch = "benchmarking"
+    branch = "engineer"
     computer_env = "local/unspecified"
     scenario = "perlin"
     odir = ""
@@ -450,7 +436,6 @@ if __name__=='__main__':
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD
-        # mpi_comm.Barrier()
         Nparticles = mpi_comm.reduce(np.array(pset.nparticle_log.get_params()), op=MPI.SUM, root=0)
         Nmem = mpi_comm.reduce(np.array(pset.mem_log.get_params()), op=MPI.SUM, root=0)
         if mpi_comm.Get_rank() == 0:

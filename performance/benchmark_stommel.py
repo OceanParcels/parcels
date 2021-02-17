@@ -6,8 +6,8 @@ Date: 11-02-2020
 from parcels import AdvectionEE, AdvectionRK45, AdvectionRK4
 from parcels import FieldSet, ScipyParticle, JITParticle, Variable, AdvectionRK4, ErrorCode
 from parcels.particleset_benchmark import ParticleSet_Benchmark as ParticleSet
-# from parcels.kernel_benchmark import Kernel_Benchmark as Kernel
 from parcels.field import VectorField, NestedField, SummedField
+# from parcels.kernel_benchmark import Kernel_Benchmark as Kernel
 # from parcels import plotTrajectoriesFile_loadedField
 from datetime import timedelta as delta
 import math
@@ -257,7 +257,7 @@ if __name__=='__main__':
     nowtime = datetime.datetime.now()
     random.seed(nowtime.microsecond)
 
-    branch = "benchmarking"
+    branch = "engineer"
     computer_env = "local/unspecified"
     scenario = "stommel"
     odir = ""
@@ -398,11 +398,8 @@ if __name__=='__main__':
         mpi_comm = MPI.COMM_WORLD
         mpi_rank = mpi_comm.Get_rank()
         if mpi_rank==0:
-            # starttime = ostime.time()
-            # starttime = MPI.Wtime()
             starttime = ostime.process_time()
     else:
-        # starttime = ostime.time()
         starttime = ostime.process_time()
     kernels = pset.Kernel(AdvectionRK4,delete_cfiles=True)
     if agingParticles:
@@ -426,40 +423,12 @@ if __name__=='__main__':
         mpi_comm = MPI.COMM_WORLD
         mpi_rank = mpi_comm.Get_rank()
         if mpi_rank==0:
-            # endtime = ostime.time()
-            # endtime = MPI.Wtime()
             endtime = ostime.process_time()
     else:
-        #endtime = ostime.time()
         endtime = ostime.process_time()
 
     if args.write_out:
         output_file.close()
-
-    # if MPI:
-    #     mpi_comm = MPI.COMM_WORLD
-    #     if mpi_comm.Get_rank() == 0:
-    #         dt_time = []
-    #         for i in range(len(perflog.times_steps)):
-    #             if i==0:
-    #                 dt_time.append( (perflog.times_steps[i]-global_t_0) )
-    #             else:
-    #                 dt_time.append( (perflog.times_steps[i]-perflog.times_steps[i-1]) )
-    #         sys.stdout.write("final # particles: {}\n".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
-    #         sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime-starttime))
-    #         avg_time = np.mean(np.array(dt_time, dtype=np.float64))
-    #         sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time*1000.0))
-    # else:
-    #     dt_time = []
-    #     for i in range(len(perflog.times_steps)):
-    #         if i == 0:
-    #             dt_time.append((perflog.times_steps[i] - global_t_0))
-    #         else:
-    #             dt_time.append((perflog.times_steps[i] - perflog.times_steps[i - 1]))
-    #     sys.stdout.write("final # particles: {}\n".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
-    #     sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime - starttime))
-    #     avg_time = np.mean(np.array(dt_time, dtype=np.float64))
-    #     sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time * 1000.0))
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD
@@ -494,7 +463,6 @@ if __name__=='__main__':
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD
-        # mpi_comm.Barrier()
         Nparticles = mpi_comm.reduce(np.array(pset.nparticle_log.get_params()), op=MPI.SUM, root=0)
         Nmem = mpi_comm.reduce(np.array(pset.mem_log.get_params()), op=MPI.SUM, root=0)
         if mpi_comm.Get_rank() == 0:

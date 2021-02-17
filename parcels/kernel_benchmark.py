@@ -108,13 +108,17 @@ class Kernel_Benchmark(Kernel):
             g.load_chunk = np.where(g.load_chunk == 1, 2, g.load_chunk)
             if len(g.load_chunk) > 0:  # not the case if a field in not called in the kernel
                 if not g.load_chunk.flags.c_contiguous:
-                    g.load_chunk = g.load_chunk.copy()
+                    # g.load_chunk = g.load_chunk.copy()
+                    g.load_chunk = np.array(g.load_chunk, order='C')
             if not g.depth.flags.c_contiguous:
-                g.depth = g.depth.copy()
+                # g.depth = g.depth.copy()
+                g.depth = np.array(g.depth, order='C')
             if not g.lon.flags.c_contiguous:
-                g.lon = g.lon.copy()
+                # g.lon = g.lon.copy()
+                g.lon = np.array(g.lon, order='C')
             if not g.lat.flags.c_contiguous:
-                g.lat = g.lat.copy()
+                # g.lat = g.lat.copy()
+                g.lat = np.array(g.lat, order='C')
 
         fargs = [byref(f.ctypes_struct) for f in self.field_args.values()]
         fargs += [c_double(f) for f in self.const_args.values()]

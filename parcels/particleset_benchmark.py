@@ -309,7 +309,7 @@ class ParticleSet_Benchmark(ParticleSet):
             # else:
             #     mem_B_used_total = self.process.memory_info().rss
             # mem_B_used_total = self.process.memory_info().rss
-            mem_B_used_total = 0
+            # mem_B_used_total = 0
             if USE_RUSE_SYNC_MEMLOG:
                 mem_B_used_total = measure_mem_usage()
             else:

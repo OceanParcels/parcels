@@ -240,13 +240,17 @@ class Kernel(object):
             g.load_chunk = np.where(g.load_chunk == 1, 2, g.load_chunk)
             if len(g.load_chunk) > 0:  # not the case if a field in not called in the kernel
                 if not g.load_chunk.flags.c_contiguous:
-                    g.load_chunk = g.load_chunk.copy()
+                    # g.load_chunk = g.load_chunk.copy()
+                    g.load_chunk = np.array(g.load_chunk, order='C')
             if not g.depth.flags.c_contiguous:
-                g.depth = g.depth.copy()
+                # g.depth = g.depth.copy()
+                g.depth = np.array(g.depth, order='C')
             if not g.lon.flags.c_contiguous:
-                g.lon = g.lon.copy()
+                # g.lon = g.lon.copy()
+                g.lon = np.array(g.lon, order='C')
             if not g.lat.flags.c_contiguous:
-                g.lat = g.lat.copy()
+                # g.lat = g.lat.copy()
+                g.lat = np.array(g.lat, order='C')
 
         fargs = [byref(f.ctypes_struct) for f in self.field_args.values()]
         fargs += [c_double(f) for f in self.const_args.values()]
@@ -343,12 +347,15 @@ class Kernel(object):
                     break
 
     def remove_deleted(self, pset, output_file, endtime):
-        """Utility to remove all particles that signalled deletion"""
-        indices = [i for i, p in enumerate(pset.particles)
-                   if p.state in [ErrorCode.Delete]]
-        if len(indices) > 0 and output_file is not None:
-            output_file.write(pset[indices], endtime, deleted_only=True)
-        pset.remove(indices)
+            """Utility to remove all particles that signalled deletion"""
+            states = np.array([p.state for p in pset.particles])
+            delstates = states==int(ErrorCode.Delete)
+            indices = np.nonzero(delstates)
+            n_deleted = np.count_nonzero(delstates)
+            if n_deleted > 0 and output_file is not None:
+                output_file.write(pset[indices], endtime, deleted_only=True)
+            pset.remove(indices)
+
 
     def execute(self, pset, endtime, dt, recovery=None, output_file=None, execute_once=False):
         """Execute this Kernel over a ParticleSet for several timesteps"""
@@ -357,14 +364,6 @@ class Kernel(object):
 
         if abs(dt) < 1e-6 and not execute_once:
             logger.warning_once("'dt' is too small, causing numerical accuracy limit problems. Please chose a higher 'dt' and rather scale the 'time' axis of the field accordingly. (related issue #762)")
-
-        # def remove_deleted(pset):
-        #     """Utility to remove all particles that signalled deletion"""
-        #     indices = [i for i, p in enumerate(pset.particles)
-        #                if p.state in [ErrorCode.Delete]]
-        #     if len(indices) > 0 and output_file is not None:
-        #         output_file.write(pset[indices], endtime, deleted_only=True)
-        #     pset.remove(indices)
 
         if recovery is None:
             recovery = {}
@@ -387,9 +386,16 @@ class Kernel(object):
         self.remove_deleted(pset, output_file=output_file, endtime=endtime)
 
         # Identify particles that threw errors
-        error_particles = [p for p in pset.particles if p.state not in [ErrorCode.Success, ErrorCode.Evaluate]]
+        states = np.array([p.state for p in pset.particles])
+        estates = np.zeros(states.shape, dtype=np.bool)
+        for ecval in {ErrorCode.Success, ErrorCode.Evaluate}:
+            estates |= states==int(ecval)
+        estates = np.invert(estates)
+        error_indices = np.nonzero(estates)
+        n_errors = np.count_nonzero(estates)
+        error_particles = pset[error_indices]
 
-        while len(error_particles) > 0:
+        while n_errors > 0:
             # Apply recovery kernel
             for p in error_particles:
                 if p.state == ErrorCode.StopExecution:
@@ -397,7 +403,6 @@ class Kernel(object):
                 if p.state == ErrorCode.Repeat:
                     p.reset_state()
                 elif p.state == ErrorCode.Delete:
-                    # p.delete()
                     pass
                 elif p.state in recovery_map:
                     recovery_kernel = recovery_map[p.state]
@@ -407,7 +412,6 @@ class Kernel(object):
                         p.reset_state()
                 else:
                     logger.warning_once('Deleting particle {} because of non-recoverable error'.format(p.id))
-                    # logger.warning('Deleting particle because of bug in #749 and #737 - particle state: {}'.format(ErrorCode.toString(p.state)))
                     p.delete()
 
             # Remove all particles that signalled deletion
@@ -419,7 +423,15 @@ class Kernel(object):
             else:
                 self.execute_python(pset, endtime, dt)
 
-            error_particles = [p for p in pset.particles if p.state not in [ErrorCode.Success, ErrorCode.Evaluate]]
+            # error_particles = [p for p in pset.particles if p.state not in [ErrorCode.Success, ErrorCode.Evaluate]]
+            states = np.array([p.state for p in pset.particles])
+            estates = np.zeros(states.shape, dtype=np.bool)
+            for ecval in {ErrorCode.Success, ErrorCode.Evaluate}:
+                estates |= states == int(ecval)
+            estates = np.invert(estates)
+            error_indices = np.nonzero(estates)
+            n_errors = np.count_nonzero(estates)
+            error_particles = pset[error_indices]
 
     def merge(self, kernel):
         funcname = self.funcname + kernel.funcname

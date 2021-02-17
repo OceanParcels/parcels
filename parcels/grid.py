@@ -35,9 +35,15 @@ class Grid(object):
     """
 
     def __init__(self, lon, lat, time, time_origin, mesh):
-        self.lon = lon
-        self.lat = lat
-        self.time = np.zeros(1, dtype=np.float64) if time is None else time
+        self.lon = lon  # should be a C-contiguous array of floats
+        if not self.lon.flags['C_CONTIGUOUS']:
+            self.lon = np.array(self.lon, order='C')
+        self.lat = lat  # should be a C-contiguous array of floats
+        if not self.lat.flags['C_CONTIGUOUS']:
+            self.lat = np.array(self.lat, order='C')
+        self.time = np.zeros(1, dtype=np.float64) if time is None else time # should be a C-contiguous array of float64
+        if not self.time.flags['C_CONTIGUOUS']:
+            self.time = np.array(self.time, order='C')
         if not self.lon.dtype == np.float32:
             logger.warning_once("Casting lon data to np.float32")
             self.lon = self.lon.astype(np.float32)
@@ -61,7 +67,7 @@ class Grid(object):
         self.defer_load = False
         self.lonlat_minmax = np.array([np.nanmin(lon), np.nanmax(lon), np.nanmin(lat), np.nanmax(lat)], dtype=np.float32)
         self.periods = 0
-        self.load_chunk = []
+        self.load_chunk = []    # should be a C-contiguous array of ints
         self.chunk_info = None
         self.master_chunksize = None
         self._add_last_periodic_data_timestep = False
@@ -303,7 +309,9 @@ class RectilinearZGrid(RectilinearGrid):
             assert(len(depth.shape) == 1), 'depth is not a vector'
 
         self.gtype = GridCode.RectilinearZGrid
-        self.depth = np.zeros(1, dtype=np.float32) if depth is None else depth
+        self.depth = np.zeros(1, dtype=np.float32) if depth is None else depth  # should be a C-contiguous array of floats
+        if not self.depth.flags['C_CONTIGUOUS']:
+            self.depth = np.array(self.depth, order='C')
         self.zdim = self.depth.size
         self.z4d = -1  # only used in RectilinearSGrid
         if not self.depth.dtype == np.float32:
@@ -339,7 +347,9 @@ class RectilinearSGrid(RectilinearGrid):
         assert(isinstance(depth, np.ndarray) and len(depth.shape) in [3, 4]), 'depth is not a 3D or 4D numpy array'
 
         self.gtype = GridCode.RectilinearSGrid
-        self.depth = depth
+        self.depth = depth  # should be a C-contiguous array of floats
+        if not self.depth.flags['C_CONTIGUOUS']:
+            self.depth = np.array(self.depth, order='C')
         self.zdim = self.depth.shape[-3]
         self.z4d = len(self.depth.shape) == 4
         if self.z4d:
@@ -435,7 +445,9 @@ class CurvilinearZGrid(CurvilinearGrid):
             assert(len(depth.shape) == 1), 'depth is not a vector'
 
         self.gtype = GridCode.CurvilinearZGrid
-        self.depth = np.zeros(1, dtype=np.float32) if depth is None else depth
+        self.depth = np.zeros(1, dtype=np.float32) if depth is None else depth  # should be a C-contiguous array of floats
+        if not self.depth.flags['C_CONTIGUOUS']:
+            self.depth = np.array(self.depth, order='C')
         self.zdim = self.depth.size
         self.z4d = -1  # only for SGrid
         if not self.depth.dtype == np.float32:
@@ -470,7 +482,9 @@ class CurvilinearSGrid(CurvilinearGrid):
         assert(isinstance(depth, np.ndarray) and len(depth.shape) in [3, 4]), 'depth is not a 4D numpy array'
 
         self.gtype = GridCode.CurvilinearSGrid
-        self.depth = depth
+        self.depth = depth  # should be a C-contiguous array of floats
+        if not self.depth.flags['C_CONTIGUOUS']:
+            self.depth = np.array(self.depth, order='C')
         self.zdim = self.depth.shape[-3]
         self.z4d = len(self.depth.shape) == 4
         if self.z4d:
