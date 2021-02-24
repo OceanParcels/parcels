@@ -26,6 +26,11 @@ typedef enum
     NEMO = 0, MITGCM = 1, MOM5 = 2, POP = 3
   } GridIndexingType;
 
+typedef enum
+  {
+    NONE = 0, LON = 1, LAT = 2
+  } DerivativeDirection;
+
 typedef struct
 {
   int gtype;

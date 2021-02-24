@@ -425,6 +425,32 @@ def test_random_field(mode, k_sample_p, xdim=20, ydim=20, npart=100):
     assert((sampled >= 0.).all())
 
 
+@pytest.mark.parametrize('mode', ['scipy', 'jit'])  # TODO: make test more complex (mesh=spherical etc)
+def test_field_derivative(mode):
+    dimensions = {'lon': np.linspace(0., 2., 2, dtype=np.float32),
+                  'lat': np.linspace(0., 3., 2, dtype=np.float32)}
+    data = {'U': np.zeros((2, 2), dtype=np.float32),
+            'V': np.zeros((2, 2), dtype=np.float32),
+            'P': np.array([[0, 1], [2, 3]], dtype=np.float32)}
+    fieldset = FieldSet.from_data(data, dimensions, mesh='flat')
+
+    class GradientSampler(pclass(mode)):
+        px = Variable('px')
+        py = Variable('py')
+
+    pset = ParticleSet(fieldset, pclass=GradientSampler, lon=1, lat=1.5)
+
+    def gradient_sampling(particle, fieldset, time):
+        particle.p = fieldset.P.eval(time, particle.depth, particle.lon, particle.lon)
+        particle.px = fieldset.P.eval(time, particle.depth, particle.lat, particle.lon, derivative='lon')
+        particle.py = fieldset.P.eval(time, particle.depth, particle.lat, particle.lon, derivative='lat')
+
+    pset.execute(gradient_sampling, dt=0.)
+    assert np.isclose(pset[0].p, 7./6.)
+    assert np.isclose(pset[0].px, 0.5)
+    assert np.isclose(pset[0].py, 2./3.)
+
+
 @pytest.mark.parametrize('mode', ['scipy', 'jit'])
 @pytest.mark.parametrize('allow_time_extrapolation', [True, False])
 def test_sampling_out_of_bounds_time(mode, allow_time_extrapolation, k_sample_p,

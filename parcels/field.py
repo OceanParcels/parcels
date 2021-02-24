@@ -885,9 +885,21 @@ class Field(object):
         else:
             return self.search_indices_curvilinear(x, y, z, ti, time, particle=particle, search2D=search2D)
 
-    def interpolator2D(self, ti, z, y, x, particle=None):
+    def interpolator2D(self, ti, z, y, x, particle=None, derivative=None):
         (xsi, eta, _, xi, yi, _) = self.search_indices(x, y, z, particle=particle)
-        if self.interp_method == 'nearest':
+        if derivative in ['x', 'lon']:  # TODO implement curvilinear grid etc
+            if self.grid.gtype in [GridCode.RectilinearSGrid, GridCode.RectilinearZGrid]:
+                dx = self.grid.lon[xi+1] - self.grid.lon[xi]
+            else:
+                raise NotImplementedError('Curvilinear grid derivatives not yet implemented')
+            return (self.data[ti, yi, xi+1] - self.data[ti, yi, xi]) / dx
+        elif derivative in ['y', 'lat']:
+            if self.grid.gtype in [GridCode.RectilinearSGrid, GridCode.RectilinearZGrid]:
+                dy = self.grid.lat[yi+1] - self.grid.lat[yi]
+            else:
+                raise NotImplementedError('Curvilinear grid derivatives not yet implemented')
+            return (self.data[ti, yi+1, xi] - self.data[ti, yi, xi]) / dy
+        elif self.interp_method == 'nearest':
             xii = xi if xsi <= .5 else xi+1
             yii = yi if eta <= .5 else yi+1
             return self.data[ti, yii, xii]
@@ -930,8 +942,10 @@ class Field(object):
         else:
             raise RuntimeError(self.interp_method+" is not implemented for 2D grids")
 
-    def interpolator3D(self, ti, z, y, x, time, particle=None):
+    def interpolator3D(self, ti, z, y, x, time, particle=None, derivative=None):
         (xsi, eta, zeta, xi, yi, zi) = self.search_indices(x, y, z, ti, time, particle=particle)
+        if derivative:  # TODO implement 3D derivatives
+            raise NotImplementedError('Field derivative still needs to be implemented in 3D')
         if self.interp_method == 'nearest':
             xii = xi if xsi <= .5 else xi+1
             yii = yi if eta <= .5 else yi+1
@@ -1030,13 +1044,15 @@ class Field(object):
             f1 = self.data[ti+1, :]
             return f0 + (f1 - f0) * ((time - t0) / (t1 - t0))
 
-    def spatial_interpolation(self, ti, z, y, x, time, particle=None):
+    def spatial_interpolation(self, ti, z, y, x, time, particle=None, derivative=None):
         """Interpolate horizontal field values using a SciPy interpolator"""
 
         if self.grid.zdim == 1:
-            val = self.interpolator2D(ti, z, y, x, particle=particle)
+            if derivative in ['depth', 'z']:
+                RuntimeError('Cannot take derivative in depth direction for Field with only one depth layer')
+            val = self.interpolator2D(ti, z, y, x, particle=particle, derivative=derivative)
         else:
-            val = self.interpolator3D(ti, z, y, x, time, particle=particle)
+            val = self.interpolator3D(ti, z, y, x, time, particle=particle, derivative=derivative)
         if np.isnan(val):
             # Detect Out-of-bounds sampling and raise exception
             raise FieldOutOfBoundError(x, y, z, field=self)
@@ -1077,7 +1093,7 @@ class Field(object):
         else:
             return (time_index.argmin() - 1 if time_index.any() else 0, 0)
 
-    def eval(self, time, z, y, x, particle=None, applyConversion=True):
+    def eval(self, time, z, y, x, particle=None, applyConversion=True, derivative=None):
         """Interpolate field values in space and time.
 
         We interpolate linearly in time and apply implicit unit
@@ -1086,9 +1102,12 @@ class Field(object):
         """
         (ti, periods) = self.time_index(time)
         time -= periods*(self.grid.time_full[-1]-self.grid.time_full[0])
+        derivative = derivative.lower() if derivative is not None else derivative
+        if derivative in ['time', 't']:
+            raise NotImplementedError('Time derivatives are not yet implemented in Field Sampling')
         if ti < self.grid.tdim-1 and time > self.grid.time[ti]:
-            f0 = self.spatial_interpolation(ti, z, y, x, time, particle=particle)
-            f1 = self.spatial_interpolation(ti + 1, z, y, x, time, particle=particle)
+            f0 = self.spatial_interpolation(ti, z, y, x, time, particle=particle, derivative=derivative)
+            f1 = self.spatial_interpolation(ti + 1, z, y, x, time, particle=particle, derivative=derivative)
             t0 = self.grid.time[ti]
             t1 = self.grid.time[ti + 1]
             value = f0 + (f1 - f0) * ((time - t0) / (t1 - t0))
@@ -1096,17 +1115,18 @@ class Field(object):
             # Skip temporal interpolation if time is outside
             # of the defined time range or if we have hit an
             # excat value in the time array.
-            value = self.spatial_interpolation(ti, z, y, x, self.grid.time[ti], particle=particle)
+            value = self.spatial_interpolation(ti, z, y, x, self.grid.time[ti], particle=particle, derivative=derivative)
 
         if applyConversion:
             return self.units.to_target(value, x, y, z)
         else:
             return value
 
-    def ccode_eval(self, var, t, z, y, x):
-        # Casting interp_methd to int as easier to pass on in C-code
-        return "temporal_interpolation(%s, %s, %s, %s, %s, &particles->xi[pnum*ngrid], &particles->yi[pnum*ngrid], &particles->zi[pnum*ngrid], &particles->ti[pnum*ngrid], &%s, %s, %s)" \
-            % (x, y, z, t, self.ccode_name, var, self.interp_method.upper(), self.gridindexingtype.upper())
+    def ccode_eval(self, var, t, z, y, x, derivative=None):
+        derivative = derivative.upper() if derivative else 'NONE'
+        # Casting interp_method to int as easier to pass on in C-code
+        return "temporal_interpolation(%s, %s, %s, %s, %s, &particles->xi[pnum*ngrid], &particles->yi[pnum*ngrid], &particles->zi[pnum*ngrid], &particles->ti[pnum*ngrid], &%s, %s, %s, %s)" \
+            % (x, y, z, t, self.ccode_name, var, self.interp_method.upper(), self.gridindexingtype.upper(), derivative)
 
     def ccode_convert(self, _, z, y, x):
         return self.units.ccode_to_target(x, y, z)

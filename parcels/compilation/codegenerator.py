@@ -68,11 +68,12 @@ class FieldEvalCallNode(IntrinsicNode):
 
 
 class FieldEvalNode(IntrinsicNode):
-    def __init__(self, field, args, var, convert=True):
+    def __init__(self, field, args, var, convert=True, derivative=None):
         self.field = field
         self.args = args
         self.var = var  # the variable in which the interpolated field is written
         self.convert = convert  # whether to convert the result (like field.applyConversion)
+        self.derivative = derivative  # for calculating Field derivatives
 
 
 class VectorFieldNode(IntrinsicNode):
@@ -370,15 +371,18 @@ class IntrinsicTransformer(ast.NodeTransformer):
             tmp = self.get_tmp()
             # whether to convert
             convert = True
+            derivative = None
             if "applyConversion" in node.keywords:
                 k = node.keywords["applyConversion"]
                 if isinstance(k, ast.NameConstant):
                     convert = k.value
+            if "derivative" in node.keywords:
+                derivative = node.keywords["derivative"].s.upper()
 
             # convert args to Index(Tuple(*args))
             args = ast.Index(value=ast.Tuple(node.args, ast.Load()))
 
-            self.stmt_stack += [FieldEvalNode(node.func.field, args, tmp, convert)]
+            self.stmt_stack += [FieldEvalNode(node.func.field, args, tmp, convert, derivative)]
             return ast.Name(id=tmp)
 
         return node
@@ -788,7 +792,7 @@ class KernelGenerator(ast.NodeVisitor):
         self.visit(node.field)
         self.visit(node.args)
         args = self._check_FieldSamplingArguments(node.args.ccode)
-        ccode_eval = node.field.obj.ccode_eval(node.var, *args)
+        ccode_eval = node.field.obj.ccode_eval(node.var, *args, derivative=node.derivative)
         stmts = [c.Assign("err", ccode_eval)]
 
         if node.convert:

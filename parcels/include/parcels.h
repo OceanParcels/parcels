@@ -281,6 +281,36 @@ static inline StatusCode spatial_interpolation_nearest3D(double xsi, double eta,
   return SUCCESS;
 }
 
+/* Longitude gradient routine for 2D grid */
+static inline StatusCode spatial_gradient_lon2D(double xsi, double eta, float data[2][2], double dx, float *value)
+{
+  *value = (data[1][1] - data[1][0]) / dx;  // TODO implement for varying eta
+  return SUCCESS;
+}
+
+/* Longitude gradient routine for 3D grid */
+static inline StatusCode spatial_gradient_lon3D(double xsi, double eta, double zeta,
+                                                        float data[2][2][2], float *value)
+{
+  *value = 0;  // TODO implement interpolation
+  return SUCCESS;
+}
+
+/* Latitude gradient routine for 2D grid */
+static inline StatusCode spatial_gradient_lat2D(double xsi, double eta, float data[2][2], double dy, float *value)
+{
+  *value = (data[1][1] - data[0][1]) / dy;  // TODO implement for varying xsi
+  return SUCCESS;
+}
+
+/* Longitude gradient routine for 3D grid */
+static inline StatusCode spatial_gradient_lat3D(double xsi, double eta, double zeta,
+                                                        float data[2][2][2], float *value)
+{
+  *value = 0;  // TODO implement interpolation
+  return SUCCESS;
+}
+
 static inline int getBlock2D(int *chunk_info, int yi, int xi, int *block, int *index_local)
 {
   int ndim = chunk_info[0];
@@ -476,7 +506,8 @@ static inline StatusCode getCell3D(CField *f, int xi, int yi, int zi, int ti, fl
 /* Linear interpolation along the time axis */
 static inline StatusCode temporal_interpolation_structured_grid(type_coord x, type_coord y, type_coord z, double time, CField *f,
                                                                GridCode gcode, int *xi, int *yi, int *zi, int *ti,
-                                                               float *value, int interp_method, int gridindexingtype)
+                                                               float *value, int interp_method,
+                                                               int gridindexingtype, int derivative)
 {
   StatusCode status;
   CStructuredGrid *grid = f->grid->grid;
@@ -541,7 +572,19 @@ static inline StatusCode temporal_interpolation_structured_grid(type_coord x, ty
     }                                                                   \
   } while (0)
 
-  if ((interp_method == LINEAR) || (interp_method == CGRID_VELOCITY) ||
+  if (derivative == LON){
+    float dx = grid->lon[xi[igrid]+1] - grid->lon[xi[igrid]];
+    for (int i = 0; i < tii; i++) {
+      status = spatial_gradient_lon2D(xsi, eta, data2D[i], dx, &val[i]);
+      CHECKSTATUS(status);
+    }
+  } else if (derivative == LAT){
+    float dy = grid->lat[yi[igrid]+1] - grid->lat[yi[igrid]];
+    for (int i = 0; i < tii; i++) {
+      status = spatial_gradient_lat2D(xsi, eta, data2D[i], dy, &val[i]);
+      CHECKSTATUS(status);
+    }
+  } else if ((interp_method == LINEAR) || (interp_method == CGRID_VELOCITY) ||
       (interp_method == BGRID_VELOCITY) || (interp_method == BGRID_W_VELOCITY)) {
     // adjust the normalised coordinate for flux-based interpolation methods
     if ((interp_method == CGRID_VELOCITY) || (interp_method == BGRID_W_VELOCITY)) {
@@ -957,13 +1000,13 @@ static inline StatusCode temporal_interpolationUVW_c_grid(type_coord x, type_coo
 
 static inline StatusCode temporal_interpolation(type_coord x, type_coord y, type_coord z, double time, CField *f,
                                                int *xi, int *yi, int *zi, int *ti,
-                                               float *value, int interp_method, int gridindexingtype)
+                                               float *value, int interp_method, int gridindexingtype, int derivative)
 {
   CGrid *_grid = f->grid;
   GridCode gcode = _grid->gtype;
 
   if (gcode == RECTILINEAR_Z_GRID || gcode == RECTILINEAR_S_GRID || gcode == CURVILINEAR_Z_GRID || gcode == CURVILINEAR_S_GRID)
-    return temporal_interpolation_structured_grid(x, y, z, time, f, gcode, xi, yi, zi, ti, value, interp_method, gridindexingtype);
+    return temporal_interpolation_structured_grid(x, y, z, time, f, gcode, xi, yi, zi, ti, value, interp_method, gridindexingtype, derivative);
   else{
     printf("Only RECTILINEAR_Z_GRID, RECTILINEAR_S_GRID, CURVILINEAR_Z_GRID and CURVILINEAR_S_GRID grids are currently implemented\n");
     return ERROR;
@@ -983,8 +1026,8 @@ static inline StatusCode temporal_interpolationUV(type_coord x, type_coord y, ty
     return SUCCESS;
   }
   else{
-    status = temporal_interpolation(x, y, z, time, U, xi, yi, zi, ti, valueU, interp_method, gridindexingtype); CHECKSTATUS(status);
-    status = temporal_interpolation(x, y, z, time, V, xi, yi, zi, ti, valueV, interp_method, gridindexingtype); CHECKSTATUS(status);
+    status = temporal_interpolation(x, y, z, time, U, xi, yi, zi, ti, valueU, interp_method, gridindexingtype, 0); CHECKSTATUS(status);
+    status = temporal_interpolation(x, y, z, time, V, xi, yi, zi, ti, valueV, interp_method, gridindexingtype, 0); CHECKSTATUS(status);
     return SUCCESS;
   }
 }
@@ -1006,7 +1049,7 @@ static inline StatusCode temporal_interpolationUVW(type_coord x, type_coord y, t
   status = temporal_interpolationUV(x, y, z, time, U, V, xi, yi, zi, ti, valueU, valueV, interp_method, gridindexingtype); CHECKSTATUS(status);
   if (interp_method == BGRID_VELOCITY)
     interp_method = BGRID_W_VELOCITY;
-  status = temporal_interpolation(x, y, z, time, W, xi, yi, zi, ti, valueW, interp_method, gridindexingtype); CHECKSTATUS(status);
+  status = temporal_interpolation(x, y, z, time, W, xi, yi, zi, ti, valueW, interp_method, gridindexingtype, 0); CHECKSTATUS(status);
   return SUCCESS;
 }
 
