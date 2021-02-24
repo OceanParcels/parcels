@@ -925,7 +925,7 @@ class Field(object):
                 return val
         elif self.interp_method in ['cgrid_tracer', 'bgrid_tracer']:
             return self.data[ti, yi+1, xi+1]
-        elif self.interp_method == 'cgrid_velocity':
+        elif 'cgrid_velocity' in self.interp_method:
             raise RuntimeError("%s is a scalar field. cgrid_velocity interpolation method should be used for vector fields (e.g. FieldSet.UV)" % self.name)
         else:
             raise RuntimeError(self.interp_method+" is not implemented for 2D grids")
@@ -1403,13 +1403,13 @@ class VectorField(object):
         self.W = W
         self.vector_type = '3D' if W else '2D'
         self.gridindexingtype = U.gridindexingtype
-        if self.U.interp_method == 'cgrid_velocity':
-            assert self.V.interp_method == 'cgrid_velocity', (
+        if 'cgrid_velocity' in self.U.interp_method:
+            assert self.V.interp_method == self.U.interp_method, (
                 'Interpolation methods of U and V are not the same.')
             assert self._check_grid_dimensions(U.grid, V.grid), (
                 'Dimensions of U and V are not the same.')
             if self.vector_type == '3D':
-                assert self.W.interp_method == 'cgrid_velocity', (
+                assert self.W.interp_method == self.U.interp_method, (
                     'Interpolation methods of U and W are not the same.')
                 assert self._check_grid_dimensions(U.grid, W.grid), (
                     'Dimensions of U and W are not the same.')
@@ -1456,47 +1456,108 @@ class VectorField(object):
             px[1:] = np.where(-px[1:] + px[0] > 180, px[1:]+360, px[1:])
         xx = (1-xsi)*(1-eta) * px[0] + xsi*(1-eta) * px[1] + xsi*eta * px[2] + (1-xsi)*eta * px[3]
         assert abs(xx-x) < 1e-4
-        c1 = self.dist(px[0], px[1], py[0], py[1], grid.mesh, np.dot(i_u.phi2D_lin(xsi, 0.), py))
-        c2 = self.dist(px[1], px[2], py[1], py[2], grid.mesh, np.dot(i_u.phi2D_lin(1., eta), py))
-        c3 = self.dist(px[2], px[3], py[2], py[3], grid.mesh, np.dot(i_u.phi2D_lin(xsi, 1.), py))
-        c4 = self.dist(px[3], px[0], py[3], py[0], grid.mesh, np.dot(i_u.phi2D_lin(0., eta), py))
-        if grid.zdim == 1:
-            if self.gridindexingtype == 'nemo':
-                U0 = self.U.data[ti, yi+1, xi] * c4
-                U1 = self.U.data[ti, yi+1, xi+1] * c2
-                V0 = self.V.data[ti, yi, xi+1] * c1
-                V1 = self.V.data[ti, yi+1, xi+1] * c3
-            elif self.gridindexingtype == 'mitgcm':
-                U0 = self.U.data[ti, yi, xi] * c4
-                U1 = self.U.data[ti, yi, xi + 1] * c2
-                V0 = self.V.data[ti, yi, xi] * c1
-                V1 = self.V.data[ti, yi + 1, xi] * c3
-        else:
-            if self.gridindexingtype == 'nemo':
-                U0 = self.U.data[ti, zi, yi+1, xi] * c4
-                U1 = self.U.data[ti, zi, yi+1, xi+1] * c2
-                V0 = self.V.data[ti, zi, yi, xi+1] * c1
-                V1 = self.V.data[ti, zi, yi+1, xi+1] * c3
-            elif self.gridindexingtype == 'mitgcm':
-                U0 = self.U.data[ti, zi, yi, xi] * c4
-                U1 = self.U.data[ti, zi, yi, xi + 1] * c2
-                V0 = self.V.data[ti, zi, yi, xi] * c1
-                V1 = self.V.data[ti, zi, yi + 1, xi] * c3
-        U = (1-xsi) * U0 + xsi * U1
-        V = (1-eta) * V0 + eta * V1
-        rad = np.pi/180.
+        rad = np.pi / 180.
         deg2m = 1852 * 60.
         meshJac = (deg2m * deg2m * math.cos(rad * y)) if grid.mesh == 'spherical' else 1
         jac = self.jacobian(xsi, eta, px, py) * meshJac
 
-        u = ((-(1-eta) * U - (1-xsi) * V) * px[0]
-             + ((1-eta) * U - xsi * V) * px[1]
-             + (eta * U + xsi * V) * px[2]
-             + (-eta * U + (1-xsi) * V) * px[3]) / jac
-        v = ((-(1-eta) * U - (1-xsi) * V) * py[0]
-             + ((1-eta) * U - xsi * V) * py[1]
-             + (eta * U + xsi * V) * py[2]
-             + (-eta * U + (1-xsi) * V) * py[3]) / jac
+        c1 = self.dist(px[0], px[1], py[0], py[1], grid.mesh, np.dot(i_u.phi2D_lin(xsi, 0.), py))
+        c2 = self.dist(px[1], px[2], py[1], py[2], grid.mesh, np.dot(i_u.phi2D_lin(1., eta), py))
+        c3 = self.dist(px[2], px[3], py[2], py[3], grid.mesh, np.dot(i_u.phi2D_lin(xsi, 1.), py))
+        c4 = self.dist(px[3], px[0], py[3], py[0], grid.mesh, np.dot(i_u.phi2D_lin(0., eta), py))
+
+        if self.U.interp_method == 'cgrid_velocity':
+            if grid.zdim == 1:
+                if self.gridindexingtype == 'nemo':
+                    U0 = self.U.data[ti, yi+1, xi] * c4
+                    U1 = self.U.data[ti, yi+1, xi+1] * c2
+                    V0 = self.V.data[ti, yi, xi+1] * c1
+                    V1 = self.V.data[ti, yi+1, xi+1] * c3
+                elif self.gridindexingtype == 'mitgcm':
+                    U0 = self.U.data[ti, yi, xi] * c4
+                    U1 = self.U.data[ti, yi, xi + 1] * c2
+                    V0 = self.V.data[ti, yi, xi] * c1
+                    V1 = self.V.data[ti, yi + 1, xi] * c3
+            else:
+                if self.gridindexingtype == 'nemo':
+                    U0 = self.U.data[ti, zi, yi+1, xi] * c4
+                    U1 = self.U.data[ti, zi, yi+1, xi+1] * c2
+                    V0 = self.V.data[ti, zi, yi, xi+1] * c1
+                    V1 = self.V.data[ti, zi, yi+1, xi+1] * c3
+                elif self.gridindexingtype == 'mitgcm':
+                    U0 = self.U.data[ti, zi, yi, xi] * c4
+                    U1 = self.U.data[ti, zi, yi, xi + 1] * c2
+                    V0 = self.V.data[ti, zi, yi, xi] * c1
+                    V1 = self.V.data[ti, zi, yi + 1, xi] * c3
+            U = (1-xsi) * U0 + xsi * U1
+            V = (1-eta) * V0 + eta * V1
+
+            u = ((-(1-eta) * U - (1-xsi) * V) * px[0]
+                 + ((1-eta) * U - xsi * V) * px[1]
+                 + (eta * U + xsi * V) * px[2]
+                 + (-eta * U + (1-xsi) * V) * px[3]) / jac
+            v = ((-(1-eta) * U - (1-xsi) * V) * py[0]
+                 + ((1-eta) * U - xsi * V) * py[1]
+                 + (eta * U + xsi * V) * py[2]
+                 + (-eta * U + (1-xsi) * V) * py[3]) / jac
+
+        elif self.U.interp_method == 'cgrid_velocity_incompressible':
+            if self.gridindexingtype == 'nemo':
+                # TODO need to use actual grid size instead of c1, c2, c3, c4 etc
+                U0 = self.U.data[ti, yi+1, xi] * c4
+                U1 = self.U.data[ti, yi+1, xi+1] * c2
+                U2 = self.U.data[ti, yi, xi] * c4
+                U3 = self.U.data[ti, yi, xi+1] * c2
+
+                V0 = self.V.data[ti, yi, xi+1] * c1
+                V1 = self.V.data[ti, yi+1, xi+1] * c3
+                V2 = self.V.data[ti, yi, xi] * c1
+                V3 = self.V.data[ti, yi+1, xi] * c3
+                
+                Tu = (x-xi-1) * (y-yi-1) * U2
+                    + (x-xi) * (y-yi) * U1
+                    - (x-xi) * (y-yi-1) * U3
+                    - (x-xi-1) * (y-yi) * U0
+                    
+                Tv = (x-xi-1) * (y-yi-1) * V2
+                    + (x-xi) * (y-yi) * V1
+                    - (x-xi) * (y-yi-1) * V0
+                    - (x-xi-1) * (y-yi) * V3
+                    
+                #correction + TO BE CHECKED transports are divided by dxdy to get velocities in m/s ?
+                alpha = U2 - U3 + U1 - U0
+                beta = V2 - V0 + V1 - V3              
+                u = (Tu - (0.5 * (x-xi-2) * (x-xi-1) * beta)) / (c1 * c2)
+                v = (Tv - (0.5 * (y-yi-2) * (y-yi-1) * alpha)) / (c1 * c2)
+                    
+            elif self.gridindexingtype == 'mitgcm':
+                # TODO need to use actual grid size instead of c1, c2, c3, c4 etc
+                U0 = self.U.data[ti, yi, xi] * c4
+                U1 = self.U.data[ti, yi, xi + 1] * c2
+                U2 = self.U.data[ti, yi+1, xi] * c4
+                U3 = self.U.data[ti, yi+1, xi + 1] * c2
+
+                V0 = self.V.data[ti, yi, xi] * c1
+                V1 = self.V.data[ti, yi + 1, xi] * c3
+                V2 = self.V.data[ti, yi, xi+1] * c1
+                V3 = self.V.data[ti, yi+1, xi + 1] * c3
+                
+                Tu = (x-xi-1) * (y-yi-1) * U0
+                    + (x-xi) * (y-yi) * U3
+                    - (x-xi) * (y-yi-1) * U1
+                    - (x-xi-1) * (y-yi) * U2
+                    
+                Tv = (x-xi-1) * (y-yi-1) * V0
+                    + (x-xi) * (y-yi) * V3
+                    - (x-xi) * (y-yi-1) * V2
+                    - (x-xi-1) * (y-yi) * V1
+                    
+                #correction + TO BE CHECKED transports are divided by dxdy to get velocities in m/s ?
+                alpha = U0 - U1 + U3 - U2
+                beta = V0 - V2 + V3 - V1  
+                u = (Tu - (0.5 * (x-xi) * (x-xi-1) * beta)) / (c1 * c2)
+                v = (Tv - (0.5 * (y-yi) * (y-yi-1) * alpha)) / (c1 * c2)
+
         if isinstance(u, da.core.Array):
             u = u.compute()
             v = v.compute()
@@ -1630,7 +1691,7 @@ class VectorField(object):
         return (u, v, w)
 
     def eval(self, time, z, y, x, particle=None):
-        if self.U.interp_method != 'cgrid_velocity':
+        if 'cgrid_velocity' not in self.U.interp_method:
             u = self.U.eval(time, z, y, x, particle=particle, applyConversion=False)
             v = self.V.eval(time, z, y, x, particle=particle, applyConversion=False)
             u = self.U.units.to_target(u, x, y, z)

@@ -551,6 +551,47 @@ def test_cgrid_uniform_3dvel_spherical(mode, vert_mode, time):
     assert abs(pset.vertical[0] - 1) < 1e-3
 
 
+@pytest.mark.parametrize('mode', ['scipy'])  # TODO also implement JIT
+@pytest.mark.parametrize('interp_method', ['cgrid_velocity', 'cgrid_velocity_incompressible'])
+def test_doublegyre_incompressible(mode, interp_method):
+    """Implemented following Froyland and Padberg (2009), 10.1016/j.physd.2009.03.002"""
+    A = 0.25
+    delta = 0.25
+    omega = 2 * np.pi
+
+    a, b = 2, 1  # domain size
+    lon = np.linspace(0, a, 51, dtype=np.float32)
+    lat = np.linspace(0, b, 51, dtype=np.float32)
+    times = np.arange(0, 3.1, 0.1)
+    dx, dy = lon[2]-lon[1], lat[2]-lat[1]
+
+    U = np.zeros((times.size, lat.size, lon.size), dtype=np.float32)
+    V = np.zeros((times.size, lat.size, lon.size), dtype=np.float32)
+
+    for i in range(lon.size):
+        for j in range(lat.size):
+            x1 = lon[i]-dx/2
+            x2 = lat[j]-dy/2
+            for t in range(len(times)):
+                time = times[t]
+                f = delta * np.sin(omega * time) * x1**2 + (1-2 * delta * np.sin(omega * time)) * x1
+                U[t, j, i] = -np.pi * A * np.sin(np.pi * f) * np.cos(np.pi * x2)
+                V[t, j, i] = np.pi * A * np.cos(np.pi * f) * np.sin(np.pi * x2) * (2 * delta * np.sin(omega * time) * x1 + 1 - 2 * delta * np.sin(omega * time))
+
+    data = {'U': U, 'V': V}
+    dimensions = {'lon': lon, 'lat': lat, 'time': times}
+    allow_time_extrapolation = True if len(times) == 1 else False
+    fieldset = FieldSet.from_data(data, dimensions, mesh='flat', allow_time_extrapolation=allow_time_extrapolation)
+    fieldset.U.interp_method = interp_method
+    fieldset.V.interp_method = interp_method
+
+    # X, Y = np.meshgrid(np.arange(0.15, 1.85, 0.1), np.arange(0.15, 0.85, 0.1))
+    X, Y = 0.15, 0.4
+    pset = ParticleSet(fieldset, pclass=ptype[mode], lon=X, lat=Y)
+    pset.execute(AdvectionRK4, dt=0.01, runtime=3)
+    print(pset)
+
+
 @pytest.mark.parametrize('mode', ['scipy', 'jit'])
 @pytest.mark.parametrize('vert_discretisation', ['zlevel', 'slevel', 'slevel2'])
 @pytest.mark.parametrize('deferred_load', [True, False])
