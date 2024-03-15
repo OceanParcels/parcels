@@ -18,14 +18,16 @@ runs:
       uses: al-cheb/configure-pagefile-action@v1.3
       with:
         minimum-size: 8GB
-    - name: Install micromamba (${{ inputs.environment-file }})
-      uses: mamba-org/setup-micromamba@v1
+    - name: Install miniconda
+      uses: conda-incubator/setup-miniconda@v2
       with:
+        miniconda-version: "latest"
+        activate-environment: ${{ inputs.environment-name }}
         environment-file: ${{ inputs.environment-file }}
-        environment-name: ${{ inputs.environment-name }}
-        channels: conda-forge
-        cache-environment: true
-        cache-downloads: true
+        auto-activate-base: false
+        auto-update-conda: true
+    - run: conda info
+      shell: bash -el {0}
     - name: Install parcels
       run: pip install .
       shell: bash -el {0}

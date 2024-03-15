@@ -8,8 +8,8 @@ dependencies:
   - git
   - jupyter
   - matplotlib-base>=2.0.2
-  - sel(unix): mpi4py
-  - sel(unix): mpich
+  - mpi4py # [unix]
+  - mpich # [unix]
   - netcdf4>=1.1.9
   - numpy>=1.9.1
   - platformdirs
