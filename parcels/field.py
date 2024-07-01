@@ -716,7 +716,25 @@ class Field:
     def search_indices_vertical_z(self, z):
         grid = self.grid
         z = np.float32(z)
-        if grid.depth[-1] > grid.depth[0]:
+        if self.gridindexingtype == "croco":
+            if z < grid.depth[0]:
+                if z > 2*grid.depth[0] - grid.depth[1]:
+                    print("NOW HERE 5", z, grid.depth[0], self.gridindexingtype)
+                    return (-1, 0.5)  # TODO: or should second argument be z / grid.depth[0]?
+                else:
+                    raise FieldOutOfBoundError(0, 0, z, field=self)
+            if z > grid.depth[-1]:
+                if z < 2*grid.depth[-1] - grid.depth[-2]:
+                    print("NOW HERE 4", z, grid.depth[-1], self.gridindexingtype, grid.zdim-2)
+                    return (grid.zdim-2, 0.5)  # TODO: or should second argument be 0 or 1?
+                else:
+                    raise FieldOutOfBoundSurfaceError(0, 0, z, field=self)
+            depth_indices = grid.depth <= z
+            if z >= grid.depth[-1]:
+                zi = len(grid.depth) - 2
+            else:
+                zi = depth_indices.argmin() - 1 if z >= grid.depth[0] else 0
+        elif grid.depth[-1] > grid.depth[0]:
             if z < grid.depth[0]:
                 # Since MOM5 is indexed at cell bottom, allow z at depth[0] - dz where dz = (depth[1] - depth[0])
                 if self.gridindexingtype == "mom5" and z > 2*grid.depth[0] - grid.depth[1]:
@@ -1054,7 +1072,7 @@ class Field:
             return self.data[ti, zii, yii, xii]
         elif self.interp_method == 'cgrid_velocity':
             # evaluating W velocity in c_grid
-            if self.gridindexingtype == 'nemo':
+            if self.gridindexingtype in ['nemo', 'croco']:
                 f0 = self.data[ti, zi, yi+1, xi+1]
                 f1 = self.data[ti, zi+1, yi+1, xi+1]
             elif self.gridindexingtype == 'mitgcm':
@@ -1572,7 +1590,7 @@ class VectorField:
         c3 = self.dist(px[2], px[3], py[2], py[3], grid.mesh, np.dot(i_u.phi2D_lin(xsi, 1.), py))
         c4 = self.dist(px[3], px[0], py[3], py[0], grid.mesh, np.dot(i_u.phi2D_lin(0., eta), py))
         if grid.zdim == 1:
-            if self.gridindexingtype == 'nemo':
+            if self.gridindexingtype in ['nemo', 'croco']:
                 U0 = self.U.data[ti, yi+1, xi] * c4
                 U1 = self.U.data[ti, yi+1, xi+1] * c2
                 V0 = self.V.data[ti, yi, xi+1] * c1
@@ -1583,7 +1601,7 @@ class VectorField:
                 V0 = self.V.data[ti, yi, xi] * c1
                 V1 = self.V.data[ti, yi + 1, xi] * c3
         else:
-            if self.gridindexingtype == 'nemo':
+            if self.gridindexingtype in ['nemo', 'croco']:
                 U0 = self.U.data[ti, zi, yi+1, xi] * c4
                 U1 = self.U.data[ti, zi, yi+1, xi+1] * c2
                 V0 = self.V.data[ti, zi, yi, xi+1] * c1
