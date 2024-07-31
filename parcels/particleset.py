@@ -855,7 +855,10 @@ class ParticleSet(ABC):
             if self.particledata.ptype.uses_jit:
                 self.kernel.remove_lib()
                 cppargs = ['-DDOUBLE_COORD_VARIABLES'] if self.particledata.lonlatdepth_dtype else None
-                self.kernel.compile(compiler=GNUCompiler(cppargs=cppargs, incdirs=[path.join(get_package_dir(), 'include'), "."]))
+                self.kernel.compile(compiler=GNUCompiler(cppargs=cppargs,
+                                                         incdirs=[path.join(get_package_dir(), 'include'),
+                                                                  path.join(get_package_dir(), 'application_kernels'),
+                                                                  "."]))
                 self.kernel.load_lib()
         if output_file:
             output_file.add_metadata('parcels_kernels', self.kernel.name)
@@ -947,6 +950,8 @@ class ParticleSet(ABC):
             pbar = tqdm(total=abs(endtime - starttime), file=sys.stdout)
 
         tol = 1e-12
+        if output_file and output_file.analytical:  # output analytical solution at start time  # TODO check if possible to make this cleaner
+            output_file.write(self, time)
         while (time < endtime and dt > 0) or (time > endtime and dt < 0) or dt == 0:
             time_at_startofloop = time
 

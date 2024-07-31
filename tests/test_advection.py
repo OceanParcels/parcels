@@ -467,12 +467,9 @@ def fieldset_decaying(xdim=100, ydim=100, maxtime=delta(hours=6)):
 def test_decaying_eddy(fieldset_decaying, mode, method, rtol, diffField, npart=1):
     fieldset = fieldset_decaying
     if method == 'AA':
-        if mode == 'jit':
-            return  # AnalyticalAdvection not implemented in JIT
-        else:
-            # needed for AnalyticalAdvection to work, but comes at expense of accuracy
-            fieldset.U.interp_method = 'cgrid_velocity'
-            fieldset.V.interp_method = 'cgrid_velocity'
+        # needed for AnalyticalAdvection to work, but comes at expense of accuracy
+        fieldset.U.interp_method = 'cgrid_velocity'
+        fieldset.V.interp_method = 'cgrid_velocity'
 
     if diffField:
         fieldset.add_field(Field('Kh_zonal', np.zeros(fieldset.U.data.shape), grid=fieldset.U.grid))
@@ -511,7 +508,7 @@ def test_analyticalAgrid(mode):
     assert failed
 
 
-@pytest.mark.parametrize('mode', ['scipy'])  # JIT not implemented
+@pytest.mark.parametrize('mode', ['scipy', 'jit'])
 @pytest.mark.parametrize('u', [1, -0.2, -0.3, 0])
 @pytest.mark.parametrize('v', [1, -0.3, 0, -1])
 @pytest.mark.parametrize('w', [None, 1, -0.3, 0, -1])
@@ -538,16 +535,17 @@ def test_uniform_analytical(mode, u, v, w, direction, tmpdir):
 
     outfile_path = tmpdir.join("uniformanalytical.zarr")
     outfile = pset.ParticleFile(name=outfile_path, outputdt=1, chunks=(1, 1))
+
     pset.execute(AdvectionAnalytical, runtime=4, dt=direction,
                  output_file=outfile)
     assert np.abs(pset.lon - x0 - pset.time * u) < 1e-6
     assert np.abs(pset.lat - y0 - pset.time * v) < 1e-6
-    if w:
+    if w is not None:
         assert np.abs(pset.depth - z0 - pset.time * w) < 1e-4
 
     ds = xr.open_zarr(outfile_path)
     times = (direction*ds['time'][:]).values.astype('timedelta64[s]')[0]
-    timeref = np.arange(1, 5).astype('timedelta64[s]')
+    timeref = np.arange(5).astype('timedelta64[s]')
     assert np.allclose(times, timeref, atol=np.timedelta64(1, 'ms'))
     lons = ds['lon'][:].values
-    assert np.allclose(lons, x0+direction*u*np.arange(1, 5))
+    assert np.allclose(lons, x0+direction*u*np.arange(5))

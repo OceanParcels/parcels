@@ -182,8 +182,6 @@ class ParticleAttributeNode(IntrinsicNode):
 
 class ParticleXiYiZiTiAttributeNode(IntrinsicNode):
     def __init__(self, obj, attr):
-        logger.warning_once(f"Be careful when sampling particle.{attr}, as this is updated in the kernel loop. "
-                            "Best to place the sampling statement before advection.")
         self.obj = obj.ccode
         self.attr = attr
 
@@ -540,6 +538,9 @@ class KernelGenerator(ABC, ast.NodeVisitor):
         else:
             for a in node.args:
                 self.visit(a)
+                if isinstance(a, ParticleXiYiZiTiAttributeNode):
+                    ngrid = str(self.fieldset.gridset.size if self.fieldset is not None else 1)
+                    a.ccode = f"{a.obj}->{a.attr}[pnum*{ngrid}]"
                 if a.ccode == 'parcels_customed_Cfunc_pointer_args':
                     pointer_args = True
                     parcels_customed_Cfunc = True
@@ -657,6 +658,8 @@ class KernelGenerator(ABC, ast.NodeVisitor):
         if isinstance(node.value, FieldNode) or isinstance(node.value, VectorFieldNode):
             node.ccode = node.value.__getitem__(node.slice.ccode).ccode
         elif isinstance(node.value, ParticleXiYiZiTiAttributeNode):
+            logger.warning_once(f"Be careful when sampling particle.{node.value.attr}, as this is updated in the kernel loop. "
+                                "Best to place the sampling statement before advection.")
             ngrid = str(self.fieldset.gridset.size if self.fieldset is not None else 1)
             node.ccode = f"{node.value.obj}->{node.value.attr}[pnum*{ngrid}+{node.slice.ccode}]"
         elif isinstance(node.value, IntrinsicNode):
@@ -910,7 +913,10 @@ class LoopGenerator:
         ccode += [str(c.Typedef(c.GenerableStruct("", vdeclp, declname=pname)))]
 
         if c_include:
-            ccode += [c_include]
+            if "\n" in c_include:  # c_include is a function-string
+                ccode += [c_include]
+            else:
+                ccode += [str(c.Include(f"{c_include}", system=False))]
 
         # ==== Insert kernel code ==== #
         ccode += [str(kernel_ast)]

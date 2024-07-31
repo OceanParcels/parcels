@@ -18,7 +18,7 @@ extern "C" {
 
 typedef struct
 {
-  int xdim, ydim, zdim, tdim, igrid, allow_time_extrapolation, time_periodic;
+  int xdim, ydim, zdim, tdim, igrid, allow_time_extrapolation, time_periodic, gridindexingtype;
   float ****data_chunks;
   CGrid *grid;
 } CField;
