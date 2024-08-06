@@ -947,6 +947,11 @@ class ParticleSet(ABC):
 
         tol = 1e-12
         while (time < endtime and dt > 0) or (time > endtime and dt < 0) or dt == 0:
+            # Check if we can fast-forward to the next time needed for the particles
+            if dt > 0:
+                skip_kernel = True if min(self.time) > (time + dt) else False
+            else:
+                skip_kernel = True if max(self.time) < (time + dt) else False
             time_at_startofloop = time
 
             if dt > 0:
@@ -956,9 +961,10 @@ class ParticleSet(ABC):
 
             # If we don't perform interaction, only execute the normal kernel efficiently.
             if self.interaction_kernel is None:
-                res = self.kernel.execute(self, endtime=next_time, dt=dt)
-                if res == StatusCode.StopAllExecution:
-                    return StatusCode.StopAllExecution
+                if not skip_kernel:
+                    res = self.kernel.execute(self, endtime=next_time, dt=dt)
+                    if res == StatusCode.StopAllExecution:
+                        return StatusCode.StopAllExecution
             # Interaction: interleave the interaction and non-interaction kernel for each time step.
             # E.g. Normal -> Inter -> Normal -> Inter if endtime-time == 2*dt
             else:
@@ -975,6 +981,10 @@ class ParticleSet(ABC):
                         break
             # End of interaction specific code
             time = next_time
+
+            # Check for empty ParticleSet
+            if np.isinf(next_prelease) and len(self) == 0:
+                return StatusCode.StopAllExecution
 
             if abs(time - next_output) < tol or dt == 0:
                 for fld in self.fieldset.get_fields():
