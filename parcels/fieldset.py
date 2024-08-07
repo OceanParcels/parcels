@@ -247,8 +247,8 @@ class FieldSet:
                 if U.grid.xdim == 1 or U.grid.ydim == 1 or V.grid.xdim == 1 or V.grid.ydim == 1:
                     raise NotImplementedError('C-grid velocities require longitude and latitude dimensions at least length 2')
 
-            if U.gridindexingtype not in ['nemo', 'mitgcm', 'mom5', 'pop']:
-                raise ValueError("Field.gridindexing has to be one of 'nemo', 'mitgcm', 'mom5' or 'pop'")
+            if U.gridindexingtype not in ['nemo', 'mitgcm', 'mom5', 'pop', 'croco']:
+                raise ValueError("Field.gridindexing has to be one of 'nemo', 'mitgcm', 'mom5', 'croco' or 'pop'")
 
             if V.gridindexingtype != U.gridindexingtype or (W and W.gridindexingtype != U.gridindexingtype):
                 raise ValueError('Not all velocity Fields have the same gridindexingtype')
@@ -549,6 +549,22 @@ class FieldSet:
                                            chunksize=chunksize, gridindexingtype='nemo', **kwargs)
         if hasattr(fieldset, 'W'):
             fieldset.W.set_scaling_factor(-1.)
+        return fieldset
+
+    @classmethod
+    def from_croco(cls, filenames, variables, dimensions, indices=None, mesh='spherical',
+                   allow_time_extrapolation=None, time_periodic=False,
+                   tracer_interp_method='cgrid_tracer', chunksize=None, **kwargs):
+        # TODO add docstring
+        if 'creation_log' not in kwargs.keys():
+            kwargs['creation_log'] = 'from_croco'
+        if kwargs.pop('gridindexingtype', 'croco') != 'croco':
+            raise ValueError("gridindexingtype must be 'croco' in FieldSet.from_croco(). Use FieldSet.from_c_grid_dataset otherwise")
+        fieldset = cls.from_c_grid_dataset(filenames, variables, dimensions, mesh=mesh, indices=indices, time_periodic=time_periodic,
+                                           allow_time_extrapolation=allow_time_extrapolation, tracer_interp_method=tracer_interp_method,
+                                           chunksize=chunksize, gridindexingtype='croco', **kwargs)
+        # if hasattr(fieldset, 'W'):  # TODO check direction of Vertical Velocity
+        #     fieldset.W.set_scaling_factor(-1.)
         return fieldset
 
     @classmethod
