@@ -1,6 +1,5 @@
 """Module controlling the writing of ParticleSets to Zarr file."""
 import os
-from abc import ABC
 from datetime import timedelta
 
 import numpy as np
@@ -26,7 +25,7 @@ def _set_calendar(origin_calendar):
         return origin_calendar
 
 
-class ParticleFile(ABC):
+class ParticleFile:
     """Initialise trajectory output.
 
     Parameters

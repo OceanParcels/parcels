@@ -224,7 +224,7 @@ def test_pset_repeated_release_delayed_adding_deleting(type, fieldset, mode, rep
         particle.sample_var += 1.
         if particle.sample_var > fieldset.maxvar:
             particle.delete()
-    for i in range(runtime):
+    for _ in range(runtime):
         pset.execute(IncrLon, dt=dt, runtime=1., output_file=pfile)
 
     ds = xr.open_zarr(outfilepath)
@@ -331,7 +331,7 @@ def test_write_xiyi(fieldset, mode, tmpdir):
 
 
 def test_set_calendar():
-    for calendar_name, cf_datetime in zip(_get_cftime_calendars(), _get_cftime_datetimes()):
+    for _calendar_name, cf_datetime in zip(_get_cftime_calendars(), _get_cftime_datetimes()):
         date = getattr(cftime, cf_datetime)(1990, 1, 1)
         assert _set_calendar(date.calendar) == date.calendar
     assert _set_calendar('np_datetime64') == 'standard'

@@ -176,7 +176,7 @@ def test_multigrids_pointer(mode):
 
     pset = ParticleSet.from_list(fieldset, ptype[mode], lon=[0], lat=[0], depth=[1])
 
-    for i in range(10):
+    for _ in range(10):
         pset.execute(AdvectionRK4_3D, runtime=1000, dt=500)
 
 

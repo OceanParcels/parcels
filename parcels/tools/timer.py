@@ -45,8 +45,7 @@ class Timer():
         if step == 0:
             root_time = time
         print(('(%3d%%)' % round(time/root_time*100)), end='')
-        for i in range(step+1):
-            print('  ', end='')
+        print('  ' * (step + 1), end='')
         if step > 0:
             print('(%3d%%) ' % round(time/parent_time*100), end='')
         t_str = '%1.3e s' % time if root_time < 300 else datetime.timedelta(seconds=time)

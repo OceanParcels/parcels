@@ -275,7 +275,7 @@ def test_flat_update(test_class):
     ref_instance = ref_class(inter_dist_vert=0.3, inter_dist_horiz=0.3)
     test_instance = test_class(inter_dist_vert=0.3, inter_dist_horiz=0.3)
 
-    for i in range(1, n_active_mask):
+    for _ in range(1, n_active_mask):
         positions = create_flat_positions(n_particle) + 10*np.random.rand()
         active_mask = np.random.rand(n_particle) > 0.5
         ref_instance.update_values(positions, active_mask)

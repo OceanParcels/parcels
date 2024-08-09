@@ -1,4 +1,3 @@
-from abc import ABC
 from ctypes import POINTER, Structure
 from operator import attrgetter
 
@@ -42,7 +41,7 @@ def partitionParticlesMPI_default(coords, mpi_size=1):
     return mpiProcs
 
 
-class ParticleData(ABC):
+class ParticleData:
 
     def __init__(self, pclass, lon, lat, depth, time, lonlatdepth_dtype, pid_orig, ngrid=1, **kwargs):
         """
@@ -361,7 +360,7 @@ class ParticleData(ABC):
             raise SyntaxError(f'Could not change the write status of {var}, because it is not a Variable name')
 
 
-class ParticleDataAccessor(ABC):
+class ParticleDataAccessor:
     """Wrapper that provides access to particle data, as if interacting with the particle itself.
 
     Parameters
@@ -438,7 +437,7 @@ class ParticleDataAccessor(ABC):
         self.state = StatusCode.Delete
 
 
-class ParticleDataIterator(ABC):
+class ParticleDataIterator:
     """Iterator for looping over the particles in the ParticleData.
 
     Parameters

@@ -1145,7 +1145,7 @@ class FieldSet:
         """
         for grid in self.gridset.grids:
             grid.add_periodic_halo(zonal, meridional, halosize)
-        for attr, value in iter(self.__dict__.items()):
+        for value in self.__dict__.values():
             if isinstance(value, Field):
                 value.add_periodic_halo(zonal, meridional, halosize)
 

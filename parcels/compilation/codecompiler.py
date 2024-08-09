@@ -7,6 +7,7 @@ try:
 except ModuleNotFoundError:
     MPI = None
 
+_tmp_dir = os.getcwd()
 
 class Compiler_parameters:
     def __init__(self):
@@ -79,15 +80,15 @@ class GNU_parameters(Compiler_parameters):
 
         Iflags = []
         if isinstance(incdirs, list):
-            for i, dir in enumerate(incdirs):
+            for dir in incdirs:
                 Iflags.append("-I"+dir)
         Lflags = []
         if isinstance(libdirs, list):
-            for i, dir in enumerate(libdirs):
+            for dir in libdirs:
                 Lflags.append("-L"+dir)
         lflags = []
         if isinstance(libs, list):
-            for i, lib in enumerate(libs):
+            for lib in libs:
                 lflags.append("-l" + lib)
 
         cc_env = os.getenv('CC')
@@ -207,7 +208,9 @@ class CCompiler:
         A list of arguments to the linker (optional).
     """
 
-    def __init__(self, cc=None, cppargs=None, ldargs=None, incdirs=None, libdirs=None, libs=None, tmp_dir=os.getcwd()):
+    def __init__(self, cc=None, cppargs=None, ldargs=None, incdirs=None, libdirs=None, libs=None, tmp_dir=None):
+        if tmp_dir is None:
+            tmp_dir = _tmp_dir
         if cppargs is None:
             cppargs = []
         if ldargs is None:
@@ -249,7 +252,7 @@ class CCompiler:
 class CCompiler_SS(CCompiler):
     """Single-stage C-compiler; used for a SINGLE source file."""
 
-    def __init__(self, cc=None, cppargs=None, ldargs=None, incdirs=None, libdirs=None, libs=None, tmp_dir=os.getcwd()):
+    def __init__(self, cc=None, cppargs=None, ldargs=None, incdirs=None, libdirs=None, libs=None, tmp_dir=None):
         super().__init__(cc=cc, cppargs=cppargs, ldargs=ldargs, incdirs=incdirs, libdirs=libdirs, libs=libs, tmp_dir=tmp_dir)
 
     def __str__(self):
@@ -282,7 +285,7 @@ class GNUCompiler_SS(CCompiler_SS):
         A list of arguments to pass to the linker (optional).
     """
 
-    def __init__(self, cppargs=None, ldargs=None, incdirs=None, libdirs=None, libs=None, tmp_dir=os.getcwd()):
+    def __init__(self, cppargs=None, ldargs=None, incdirs=None, libdirs=None, libs=None, tmp_dir=None):
         c_params = GNU_parameters(cppargs, ldargs, incdirs, libdirs, libs)
         super().__init__(c_params.compiler, cppargs=c_params.cppargs, ldargs=c_params.ldargs, incdirs=c_params.incdirs, libdirs=c_params.libdirs, libs=c_params.libs, tmp_dir=tmp_dir)
         self._dynlib_ext = c_params.dynlib_ext

@@ -1,6 +1,5 @@
 import os
 import sys
-from abc import ABC
 from copy import copy
 from datetime import date, datetime, timedelta
 
@@ -49,7 +48,7 @@ def _convert_to_reltime(time):
     return False
 
 
-class ParticleSet(ABC):
+class ParticleSet:
     """Class for storing particle and executing kernel over them.
 
     Please note that this currently only supports fixed size particle sets, meaning that the particle set only

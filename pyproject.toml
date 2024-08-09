@@ -64,6 +64,7 @@ select = [
     "E",  # Error
     "F",  # pyflakes
     "I",  # isort
+    "B",  # Bugbear
     # "UP", # pyupgrade
 ]
 
@@ -96,6 +97,11 @@ ignore = [
     "D205",
     # do not use bare except, specify exception instead
     "E722",
+
+    # TODO: These bugbear issues are to be resolved
+    "B011", # Do not `assert False`
+    "B016", # Cannot raise a literal. Did you intend to return it or raise an Exception?
+    "B904", # Within an `except` clause, raise exceptions
 ]
 
 [tool.ruff.lint.pydocstyle]

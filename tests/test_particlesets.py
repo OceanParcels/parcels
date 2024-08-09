@@ -290,7 +290,7 @@ def test_pset_add_execute(fieldset, mode, npart=10):
         particle_dlat += 0.1  # noqa
 
     pset = ParticleSet(fieldset, lon=[], lat=[], pclass=ptype[mode])
-    for i in range(npart):
+    for _ in range(npart):
         pset += ParticleSet(pclass=ptype[mode], lon=0.1, lat=0.1, fieldset=fieldset)
     for _ in range(4):
         pset.execute(pset.Kernel(AddLat), runtime=1., dt=1.0)
