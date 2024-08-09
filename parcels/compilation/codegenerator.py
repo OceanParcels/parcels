@@ -85,12 +85,13 @@ class VectorFieldEvalCallNode(IntrinsicNode):
 
 
 class VectorFieldEvalNode(IntrinsicNode):
-    def __init__(self, field, args, var, var2, var3, convert=True):
+    def __init__(self, field, args, var, var2, var3, var4, convert=True):
         self.field = field
         self.args = args
         self.var = var  # the variable in which the interpolated field is written
         self.var2 = var2  # second variable for UV interpolation
         self.var3 = var3  # third variable for UVW interpolation
+        self.var4 = var4  # extra variable for sigma-scaling for croco
         self.convert = convert  # whether to convert the result (like field.applyConversion)
 
 
@@ -112,12 +113,13 @@ class NestedVectorFieldNode(IntrinsicNode):
 
 
 class NestedVectorFieldEvalNode(IntrinsicNode):
-    def __init__(self, fields, args, var, var2, var3):
+    def __init__(self, fields, args, var, var2, var3, var4):
         self.fields = fields
         self.args = args
         self.var = var  # the variable in which the interpolated field is written
         self.var2 = var2  # second variable for UV interpolation
         self.var3 = var3  # third variable for UVW interpolation
+        self.var4 = var4  # extra variable for sigma-scaling for croco
 
 
 class GridNode(IntrinsicNode):
@@ -279,9 +281,10 @@ class IntrinsicTransformer(ast.NodeTransformer):
         elif isinstance(node.value, VectorFieldNode):
             tmp = self.get_tmp()
             tmp2 = self.get_tmp()
-            tmp3 = self.get_tmp() if node.value.obj.vector_type == '3D' else None
+            tmp3 = self.get_tmp() if '3D' in node.value.obj.vector_type else None
+            tmp4 = self.get_tmp() if '3DSigma' in node.value.obj.vector_type else None
             # Insert placeholder node for field eval ...
-            self.stmt_stack += [VectorFieldEvalNode(node.value, node.slice, tmp, tmp2, tmp3)]
+            self.stmt_stack += [VectorFieldEvalNode(node.value, node.slice, tmp, tmp2, tmp3, tmp4)]
             # .. and return the name of the temporary that will be populated
             if tmp3:
                 return ast.Tuple([ast.Name(id=tmp), ast.Name(id=tmp2), ast.Name(id=tmp3)], ast.Load())
@@ -294,8 +297,9 @@ class IntrinsicTransformer(ast.NodeTransformer):
         elif isinstance(node.value, NestedVectorFieldNode):
             tmp = self.get_tmp()
             tmp2 = self.get_tmp()
-            tmp3 = self.get_tmp() if list.__getitem__(node.value.obj, 0).vector_type == '3D' else None
-            self.stmt_stack += [NestedVectorFieldEvalNode(node.value, node.slice, tmp, tmp2, tmp3)]
+            tmp3 = self.get_tmp() if '3D' in list.__getitem__(node.value.obj, 0).vector_type else None
+            tmp4 = self.get_tmp() if '3DSigma' in list.__getitem__(node.value.obj, 0).vector_type else None
+            self.stmt_stack += [NestedVectorFieldEvalNode(node.value, node.slice, tmp, tmp2, tmp3, tmp4)]
             if tmp3:
                 return ast.Tuple([ast.Name(id=tmp), ast.Name(id=tmp2), ast.Name(id=tmp3)], ast.Load())
             else:
@@ -359,7 +363,8 @@ class IntrinsicTransformer(ast.NodeTransformer):
             # get a temporary value to assign result to
             tmp1 = self.get_tmp()
             tmp2 = self.get_tmp()
-            tmp3 = self.get_tmp() if node.func.field.obj.vector_type == '3D' else None
+            tmp3 = self.get_tmp() if '3D' in node.func.field.obj.vector_type else None
+            tmp4 = self.get_tmp() if '3DSigma' in node.func.field.obj.vector_type else None
             # whether to convert
             convert = True
             if "applyConversion" in node.keywords:
@@ -370,7 +375,7 @@ class IntrinsicTransformer(ast.NodeTransformer):
             # convert args to Index(Tuple(*args))
             args = ast.Index(value=ast.Tuple(node.args, ast.Load()))
 
-            self.stmt_stack += [VectorFieldEvalNode(node.func.field, args, tmp1, tmp2, tmp3, convert)]
+            self.stmt_stack += [VectorFieldEvalNode(node.func.field, args, tmp1, tmp2, tmp3, tmp4, convert)]
             if tmp3:
                 return ast.Tuple([ast.Name(id=tmp1), ast.Name(id=tmp2), ast.Name(id=tmp3)], ast.Load())
             else:
@@ -441,6 +446,7 @@ class KernelGenerator(ABC, ast.NodeVisitor):
         for kvar in self.kernel_vars + self.array_vars:
             if kvar in funcvars:
                 funcvars.remove(kvar)
+        self.ccode.body.insert(0, c.Statement("int parcels_interp_state = 0"))
         if len(funcvars) > 0:
             for f in funcvars:
                 self.ccode.body.insert(0, c.Statement(f"type_coord {f} = 0"))
@@ -559,8 +565,9 @@ class KernelGenerator(ABC, ast.NodeVisitor):
                     self.visit(node.func)
                     rhs = f"{node.func.ccode}({ccode_args})"
                     if parcels_customed_Cfunc:
-                        node.ccode = str(c.Block([c.Assign("particles->state[pnum]", rhs),
-                                                  c.Statement("CHECKSTATUS_KERNELLOOP(particles->state[pnum])")]))
+                        node.ccode = str(c.Block([c.Assign("parcels_interp_state", rhs),
+                                                  c.Assign("particles->state[pnum]", "max(particles->state[pnum], parcels_interp_state)"),
+                                                  c.Statement("CHECKSTATUS_KERNELLOOP(parcels_interp_state)")]))
                     else:
                         node.ccode = rhs
             except:
@@ -788,19 +795,25 @@ class KernelGenerator(ABC, ast.NodeVisitor):
         self.visit(node.args)
         args = self._check_FieldSamplingArguments(node.args.ccode)
         ccode_eval = node.field.obj.ccode_eval(node.var, *args)
-        stmts = [c.Assign("particles->state[pnum]", ccode_eval)]
+        stmts = [c.Assign("parcels_interp_state", ccode_eval),
+                 c.Assign("particles->state[pnum]", "max(particles->state[pnum], parcels_interp_state)")]
 
         if node.convert:
             ccode_conv = node.field.obj.ccode_convert(*args)
             conv_stat = c.Statement(f"{node.var} *= {ccode_conv}")
             stmts += [conv_stat]
 
-        node.ccode = c.Block(stmts + [c.Statement("CHECKSTATUS_KERNELLOOP(particles->state[pnum])")])
+        node.ccode = c.Block(stmts + [c.Statement("CHECKSTATUS_KERNELLOOP(parcels_interp_state)")])
 
     def visit_VectorFieldEvalNode(self, node):
         self.visit(node.field)
         self.visit(node.args)
         args = self._check_FieldSamplingArguments(node.args.ccode)
+        statements_croco = []
+        if '3DSigma' in node.field.obj.vector_type:
+            statements_croco.append(c.Assign("parcels_interp_state", f"temporal_interpolation({args[3]}, {args[2]}, 0, time, H, &particles->xi[pnum*ngrid], &particles->yi[pnum*ngrid], &particles->zi[pnum*ngrid], &particles->ti[pnum*ngrid], &{node.var}, LINEAR, {node.field.obj.U.gridindexingtype.upper()})"))
+            statements_croco.append(c.Statement(f"{node.var4} = {args[1]}/{node.var}"))
+            args = (args[0], node.var4, args[2], args[3])
         ccode_eval = node.field.obj.ccode_eval(node.var, node.var2, node.var3,
                                                node.field.obj.U, node.field.obj.V, node.field.obj.W, *args)
         if node.convert and node.field.obj.U.interp_method != 'cgrid_velocity':
@@ -810,12 +823,13 @@ class KernelGenerator(ABC, ast.NodeVisitor):
                           c.Statement(f"{node.var2} *= {ccode_conv2}")]
         else:
             statements = []
-        if node.convert and node.field.obj.vector_type == '3D':
+        if node.convert and '3D' in node.field.obj.vector_type:
             ccode_conv3 = node.field.obj.W.ccode_convert(*args)
             statements.append(c.Statement(f"{node.var3} *= {ccode_conv3}"))
         conv_stat = c.Block(statements)
-        node.ccode = c.Block([c.Assign("particles->state[pnum]", ccode_eval),
-                              conv_stat, c.Statement("CHECKSTATUS_KERNELLOOP(particles->state[pnum])")])
+        node.ccode = c.Block([c.Block(statements_croco), c.Assign("parcels_interp_state", ccode_eval),
+                              c.Assign("particles->state[pnum]", "max(particles->state[pnum], parcels_interp_state)"),
+                              conv_stat, c.Statement("CHECKSTATUS_KERNELLOOP(parcels_interp_state)")])
 
     def visit_NestedFieldEvalNode(self, node):
         self.visit(node.fields)
@@ -846,7 +860,7 @@ class KernelGenerator(ABC, ast.NodeVisitor):
                               c.Statement(f"{node.var2} *= {ccode_conv2}")]
             else:
                 statements = []
-            if fld.vector_type == '3D':
+            if '3D' in fld.vector_type:
                 ccode_conv3 = fld.W.ccode_convert(*args)
                 statements.append(c.Statement(f"{node.var3} *= {ccode_conv3}"))
             cstat += [c.Assign("particles->state[pnum]", ccode_eval),

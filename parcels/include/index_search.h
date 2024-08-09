@@ -26,7 +26,7 @@ typedef enum
 
 typedef enum
   {
-    NEMO = 0, MITGCM = 1, MOM5 = 2, POP = 3
+    NEMO = 0, MITGCM = 1, MOM5 = 2, POP = 3, CROCO = 4
   } GridIndexingType;
 
 typedef struct
@@ -103,6 +103,11 @@ static inline StatusCode search_indices_vertical_z(type_coord z, int zdim, float
     if ((z < zvals[0]) && (gridindexingtype == MOM5) && (z > 2 * zvals[0] - zvals[1])){
       *zi = -1;
       *zeta = z / zvals[0];
+      return SUCCESS;
+    }
+    if ((z > zvals[zdim-1]) && (z < 0) && (gridindexingtype == CROCO)){
+      *zi = zdim-2;
+      *zeta = 1;
       return SUCCESS;
     }
     if (z < zvals[0]) {return ERRORTHROUGHSURFACE;}
