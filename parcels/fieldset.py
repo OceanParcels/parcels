@@ -1032,6 +1032,69 @@ class FieldSet:
                                chunksize=chunksize, **kwargs)
 
     @classmethod
+    def from_xarray_delft3d(cls, ds, variables, dimensions, mesh='spherical',
+                            allow_time_extrapolation=None,
+                            time_periodic=False, **kwargs):
+        """Initialises FieldSet data from Delft3D-FLOW velocity output.
+        Important note: at the moment the code is only applicable to depth-average flowfields from Delft3D-FLOW (2D flow fields).
+
+        :param ds: Delft3D-FLOW output file.
+               Note that the built-in Advection kernels assume that U and V are in m/s
+        :param variables: Dictionary mapping parcels variable names to data variables in the Delft3D-FLOW output file.
+        :param dimensions: Dictionary mapping data dimensions (lon,
+               lat, depth, time, data) to dimensions in the xarray Dataset.
+               Note that dimensions can also be a dictionary of dictionaries if
+               dimension names are different for each variable
+               (e.g. dimensions['U'], dimensions['V'], etc).
+        :param fieldtype: Optional dictionary mapping fields to fieldtypes to be used for UnitConverter.
+               (either 'U', 'V', 'Kh_zonal', 'Kh_meridional' or None)
+        :param mesh: String indicating the type of mesh coordinates and
+               units used during velocity interpolation, see also `this tutorial <https://nbviewer.jupyter.org/github/OceanParcels/parcels/blob/master/parcels/examples/tutorial_unitconverters.ipynb>`_:
+
+               1. spherical (default): Lat and lon in degree, with a
+                  correction for zonal velocity U near the poles. - default mesh in Delft3D-FLOW output file
+               2. flat: No conversion, lat/lon are assumed to be in m.
+        :param allow_time_extrapolation: boolean whether to allow for extrapolation
+               (i.e. beyond the last available time snapshot)
+               Default is False if dimensions includes time, else True
+        :param time_periodic: To loop periodically over the time component of the Field. It is set to either False or the length of the period (either float in seconds or datetime.timedelta object). (Default: False)
+               This flag overrides the allow_time_interpolation and sets it to False
+        """
+
+        # Coercing into mitgcm format
+        ds = ds.assign(U1=ds.U1.swap_dims({'N': 'NC'}),
+                       V1=ds.V1.swap_dims({'M': 'MC'}),
+                       S1=ds.S1.swap_dims({'N': 'NC', 'M': 'MC'}),
+                       XZ=ds.XZ.swap_dims({'N': 'NC', 'M': 'MC'}),
+                       YZ=ds.YZ.swap_dims({'N': 'NC', 'M': 'MC'}),
+                       )[['U1', 'V1', 'S1']].drop(['XZ', 'YZ']).isel(KMAXOUT_RESTR=0)
+
+        # Transposing xarray dataset as per https://github.com/OceanParcels/parcels/issues/1180
+        ds = ds.transpose('time', 'NC', 'MC', ...)
+
+        fields = {}
+        if 'creation_log' not in kwargs.keys():
+            kwargs['creation_log'] = 'from_xarray_delft3d'
+        if kwargs.pop('gridindexingtype', 'mitgcm') != 'mitgcm':
+            raise ValueError("gridindexingtype must be 'mitgcm' in FieldSet.from_xarray_delft3d(), if not: consider changing method")
+        if 'time' in dimensions:
+            if 'units' not in ds[dimensions['time']].attrs and 'Unit' in ds[dimensions['time']].attrs:
+                # Fix DataArrays that have time.Unit instead of expected time.units
+                convert_xarray_time_units(ds, dimensions['time'])
+
+        for var, name in variables.items():
+            dims = dimensions[var] if var in dimensions else dimensions
+            cls.checkvaliddimensionsdict(dims)
+
+            fields[var] = Field.from_xarray_delft3d_field(ds[name], var, dims,
+                                                          mesh=mesh,
+                                                          allow_time_extrapolation=allow_time_extrapolation,
+                                                          time_periodic=time_periodic, **kwargs)
+        u = fields.pop('U', None)
+        v = fields.pop('V', None)
+        return cls(u, v, fields=fields)
+
+    @classmethod
     def from_xarray_dataset(cls, ds, variables, dimensions, mesh='spherical', allow_time_extrapolation=None,
                             time_periodic=False, **kwargs):
         """Initialises FieldSet data from xarray Datasets.
