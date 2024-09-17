@@ -72,6 +72,7 @@ example_data_files = {
         "field_0065557.nc",
     ],
     "WOA_data": [f"woa18_decav_t{m:02d}_04.nc" for m in range(1, 13)],
+    "CROCOidealized_data": ["CROCO_idealized.nc"],
 }
 
 

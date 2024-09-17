@@ -60,7 +60,7 @@ def _deal_with_errors(error, key, vector_type: VectorType):
     else:
         raise RuntimeError(f"{error}. Error could not be handled because particle was not part of the Field Sampling.")
 
-    if vector_type == "3D":
+    if vector_type and "3D" in vector_type:
         return (0, 0, 0)
     elif vector_type == "2D":
         return (0, 0)
@@ -411,7 +411,7 @@ class Field:
             that case Parcels deals with a better memory management during particle set execution.
             deferred_load=False is however sometimes necessary for plotting the fields.
         gridindexingtype : str
-            The type of gridindexing. Either 'nemo' (default) or 'mitgcm' are supported.
+            The type of gridindexing. Either 'nemo' (default), 'mitgcm', 'mom5', 'pop', or 'croco' are supported.
             See also the Grid indexing documentation on oceanparcels.org
         chunksize :
             size of the chunks in dask loading
@@ -487,6 +487,7 @@ class Field:
             depth_filename = depth_filename[0]
 
         netcdf_engine = kwargs.pop("netcdf_engine", "netcdf4")
+        gridindexingtype = kwargs.get("gridindexingtype", "nemo")
 
         indices = {} if indices is None else indices.copy()
         for ind in indices:
@@ -494,10 +495,10 @@ class Field:
                 raise RuntimeError(f"Indices for {ind} can not be empty")
             assert np.min(indices[ind]) >= 0, (
                 "Negative indices are currently not allowed in Parcels. "
-                "This is related to the non-increasing dimension it could generate "
-                "if the domain goes from lon[-4] to lon[6] for example. "
-                "Please raise an issue on https://github.com/OceanParcels/parcels/issues "
-                "if you would need such feature implemented."
+                + "This is related to the non-increasing dimension it could generate "
+                + "if the domain goes from lon[-4] to lon[6] for example. "
+                + "Please raise an issue on https://github.com/OceanParcels/parcels/issues "
+                + "if you would need such feature implemented."
             )
 
         interp_method: InterpMethod = kwargs.pop("interp_method", "linear")
@@ -509,7 +510,13 @@ class Field:
 
         _grid_fb_class = NetcdfFileBuffer
 
-        with _grid_fb_class(lonlat_filename, dimensions, indices, netcdf_engine) as filebuffer:
+        with _grid_fb_class(
+            lonlat_filename,
+            dimensions,
+            indices,
+            netcdf_engine,
+            gridindexingtype=gridindexingtype,
+        ) as filebuffer:
             lon, lat = filebuffer.lonlat
             indices = filebuffer.indices
             # Check if parcels_mesh has been explicitly set in file
@@ -523,6 +530,7 @@ class Field:
                 indices,
                 netcdf_engine,
                 interp_method=interp_method,
+                gridindexingtype=gridindexingtype,
             ) as filebuffer:
                 filebuffer.name = filebuffer.parse_name(variable[1])
                 if dimensions["depth"] == "not_yet_set":
@@ -851,6 +859,9 @@ class Field:
                 else:
                     raise FieldOutOfBoundSurfaceError(0, 0, z, field=self)
             elif z > grid.depth[-1]:
+                # In case of CROCO, allow particles in last (uppermost) layer using depth[-1]
+                if self.gridindexingtype in ["croco"] and z < 0:
+                    return (-2, 1)
                 raise FieldOutOfBoundError(0, 0, z, field=self)
             depth_indices = grid.depth <= z
             if z >= grid.depth[-1]:
@@ -1195,7 +1206,7 @@ class Field:
             if self.gridindexingtype == "nemo":
                 f0 = self.data[ti, zi, yi + 1, xi + 1]
                 f1 = self.data[ti, zi + 1, yi + 1, xi + 1]
-            elif self.gridindexingtype == "mitgcm":
+            elif self.gridindexingtype in ["mitgcm", "croco"]:
                 f0 = self.data[ti, zi, yi, xi]
                 f1 = self.data[ti, zi + 1, yi, xi]
             return (1 - zeta) * f0 + zeta * f1
@@ -1372,6 +1383,8 @@ class Field:
         """
         (ti, periods) = self.time_index(time)
         time -= periods * (self.grid.time_full[-1] - self.grid.time_full[0])
+        if self.gridindexingtype == "croco" and self is not self.fieldset.H:
+            z = z / self.fieldset.H.eval(time, 0, y, x, particle=particle, applyConversion=False)
         if ti < self.grid.tdim - 1 and time > self.grid.time[ti]:
             f0 = self.spatial_interpolation(ti, z, y, x, time, particle=particle)
             f1 = self.spatial_interpolation(ti + 1, z, y, x, time, particle=particle)
@@ -1708,12 +1721,17 @@ class VectorField:
         self.U = U
         self.V = V
         self.W = W
-        self.vector_type: VectorType = "3D" if W else "2D"
+        if self.U.gridindexingtype == "croco" and self.W:
+            self.vector_type: VectorType = "3DSigma"
+        elif self.W:
+            self.vector_type = "3D"
+        else:
+            self.vector_type = "2D"
         self.gridindexingtype = U.gridindexingtype
         if self.U.interp_method == "cgrid_velocity":
             assert self.V.interp_method == "cgrid_velocity", "Interpolation methods of U and V are not the same."
             assert self._check_grid_dimensions(U.grid, V.grid), "Dimensions of U and V are not the same."
-            if W is not None:
+            if W is not None and self.U.gridindexingtype != "croco":
                 assert W.interp_method == "cgrid_velocity", "Interpolation methods of U and W are not the same."
                 assert self._check_grid_dimensions(U.grid, W.grid), "Dimensions of U and W are not the same."
 
@@ -1773,7 +1791,7 @@ class VectorField:
                 U1 = self.U.data[ti, yi + 1, xi + 1] * c2
                 V0 = self.V.data[ti, yi, xi + 1] * c1
                 V1 = self.V.data[ti, yi + 1, xi + 1] * c3
-            elif self.gridindexingtype == "mitgcm":
+            elif self.gridindexingtype in ["mitgcm", "croco"]:
                 U0 = self.U.data[ti, yi, xi] * c4
                 U1 = self.U.data[ti, yi, xi + 1] * c2
                 V0 = self.V.data[ti, yi, xi] * c1
@@ -1784,7 +1802,7 @@ class VectorField:
                 U1 = self.U.data[ti, zi, yi + 1, xi + 1] * c2
                 V0 = self.V.data[ti, zi, yi, xi + 1] * c1
                 V1 = self.V.data[ti, zi, yi + 1, xi + 1] * c3
-            elif self.gridindexingtype == "mitgcm":
+            elif self.gridindexingtype in ["mitgcm", "croco"]:
                 U0 = self.U.data[ti, zi, yi, xi] * c4
                 U1 = self.U.data[ti, zi, yi, xi + 1] * c2
                 V0 = self.V.data[ti, zi, yi, xi] * c1
@@ -2041,6 +2059,8 @@ class VectorField:
         if self.U.grid.gtype in [GridType.RectilinearSGrid, GridType.CurvilinearSGrid]:
             (u, v, w) = self.spatial_c_grid_interpolation3D_full(ti, z, y, x, time, particle=particle)
         else:
+            if self.gridindexingtype == "croco":
+                z = z / self.fieldset.H.eval(time, 0, y, x, particle=particle, applyConversion=False)
             (u, v) = self.spatial_c_grid_interpolation2D(ti, z, y, x, time, particle=particle)
             w = self.W.eval(time, z, y, x, particle=particle, applyConversion=False)
             if applyConversion:
@@ -2167,7 +2187,7 @@ class VectorField:
             if applyConversion:
                 u = self.U.units.to_target(u, x, y, z)
                 v = self.V.units.to_target(v, x, y, z)
-            if self.vector_type == "3D":
+            if "3D" in self.vector_type:
                 w = self.W.eval(time, z, y, x, particle=particle, applyConversion=False)
                 if applyConversion:
                     w = self.W.units.to_target(w, x, y, z)
@@ -2189,7 +2209,7 @@ class VectorField:
             if ti < grid.tdim - 1 and time > grid.time[ti]:
                 t0 = grid.time[ti]
                 t1 = grid.time[ti + 1]
-                if self.vector_type == "3D":
+                if "3D" in self.vector_type:
                     (u0, v0, w0) = interp[self.U.interp_method]["3D"](
                         ti, z, y, x, time, particle=particle, applyConversion=applyConversion
                     )
@@ -2206,7 +2226,7 @@ class VectorField:
                     )
                 u = u0 + (u1 - u0) * ((time - t0) / (t1 - t0))
                 v = v0 + (v1 - v0) * ((time - t0) / (t1 - t0))
-                if self.vector_type == "3D":
+                if "3D" in self.vector_type:
                     return (u, v, w)
                 else:
                     return (u, v)
@@ -2214,7 +2234,7 @@ class VectorField:
                 # Skip temporal interpolation if time is outside
                 # of the defined time range or if we have hit an
                 # exact value in the time array.
-                if self.vector_type == "3D":
+                if "3D" in self.vector_type:
                     return interp[self.U.interp_method]["3D"](
                         ti, z, y, x, grid.time[ti], particle=particle, applyConversion=applyConversion
                     )
@@ -2234,7 +2254,7 @@ class VectorField:
 
     def ccode_eval(self, varU, varV, varW, U, V, W, t, z, y, x):
         ccode_str = ""
-        if self.vector_type == "3D":
+        if "3D" in self.vector_type:
             ccode_str = (
                 f"temporal_interpolationUVW({x}, {y}, {z}, {t}, {U.ccode_name}, {V.ccode_name}, {W.ccode_name}, "
                 + "&particles->xi[pnum*ngrid], &particles->yi[pnum*ngrid], &particles->zi[pnum*ngrid], &particles->ti[pnum*ngrid],"

@@ -1,3 +1,4 @@
+import os
 from datetime import timedelta
 from math import cos, pi
 
@@ -614,6 +615,21 @@ def test_sampling_out_of_bounds_time(mode, allow_time_extrapolation):
     else:
         with pytest.raises(RuntimeError):
             pset.execute(SampleP, runtime=0.1, dt=0.1)
+
+
+@pytest.mark.parametrize("mode", ["scipy", "jit"])
+def test_sampling_3DCROCO(mode, npart=10):
+    data_path = os.path.join(os.path.dirname(__file__), "test_data/")
+    fieldset = FieldSet.from_modulefile(data_path + "fieldset_CROCO3D.py")
+
+    SampleP = ptype[mode].add_variable("p", initial=0.0)
+
+    def SampleU(particle, fieldset, time):
+        particle.p = fieldset.U[time, particle.depth, particle.lat, particle.lon, particle]
+
+    pset = ParticleSet(fieldset, pclass=SampleP, lon=120e3, lat=50e3, depth=-0.4)
+    pset.execute(SampleU, endtime=1, dt=1)
+    assert np.isclose(pset.p, 1.0)
 
 
 @pytest.mark.parametrize("mode", ["jit", "scipy"])

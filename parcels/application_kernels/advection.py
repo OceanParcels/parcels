@@ -4,7 +4,14 @@ import math
 
 from parcels.tools.statuscodes import StatusCode
 
-__all__ = ["AdvectionRK4", "AdvectionEE", "AdvectionRK45", "AdvectionRK4_3D", "AdvectionAnalytical"]
+__all__ = [
+    "AdvectionRK4",
+    "AdvectionEE",
+    "AdvectionRK45",
+    "AdvectionRK4_3D",
+    "AdvectionAnalytical",
+    "AdvectionRK4_3D_CROCO",
+]
 
 
 def AdvectionRK4(particle, fieldset, time):
@@ -38,6 +45,51 @@ def AdvectionRK4_3D(particle, fieldset, time):
     particle_dlon += (u1 + 2 * u2 + 2 * u3 + u4) / 6 * particle.dt  # noqa
     particle_dlat += (v1 + 2 * v2 + 2 * v3 + v4) / 6 * particle.dt  # noqa
     particle_ddepth += (w1 + 2 * w2 + 2 * w3 + w4) / 6 * particle.dt  # noqa
+
+
+def AdvectionRK4_3D_CROCO(particle, fieldset, time):
+    """Advection of particles using fourth-order Runge-Kutta integration including vertical velocity.
+    This kernel assumes the vertical velocity is the 'w' field from CROCO output and works on sigma-layers.
+    """
+    sig_dep = particle.depth / fieldset.H[time, 0, particle.lat, particle.lon]
+
+    (u1, v1, w1) = fieldset.UVW[time, particle.depth, particle.lat, particle.lon, particle]
+    w1 *= sig_dep / fieldset.H[time, 0, particle.lat, particle.lon]
+    lon1 = particle.lon + u1 * 0.5 * particle.dt
+    lat1 = particle.lat + v1 * 0.5 * particle.dt
+    sig_dep1 = sig_dep + w1 * 0.5 * particle.dt
+    dep1 = sig_dep1 * fieldset.H[time, 0, lat1, lon1]
+
+    (u2, v2, w2) = fieldset.UVW[time + 0.5 * particle.dt, dep1, lat1, lon1, particle]
+    w2 *= sig_dep1 / fieldset.H[time, 0, lat1, lon1]
+    lon2 = particle.lon + u2 * 0.5 * particle.dt
+    lat2 = particle.lat + v2 * 0.5 * particle.dt
+    sig_dep2 = sig_dep + w2 * 0.5 * particle.dt
+    dep2 = sig_dep2 * fieldset.H[time, 0, lat2, lon2]
+
+    (u3, v3, w3) = fieldset.UVW[time + 0.5 * particle.dt, dep2, lat2, lon2, particle]
+    w3 *= sig_dep2 / fieldset.H[time, 0, lat2, lon2]
+    lon3 = particle.lon + u3 * particle.dt
+    lat3 = particle.lat + v3 * particle.dt
+    sig_dep3 = sig_dep + w3 * particle.dt
+    dep3 = sig_dep3 * fieldset.H[time, 0, lat3, lon3]
+
+    (u4, v4, w4) = fieldset.UVW[time + particle.dt, dep3, lat3, lon3, particle]
+    w4 *= sig_dep3 / fieldset.H[time, 0, lat3, lon3]
+    lon4 = particle.lon + u4 * particle.dt
+    lat4 = particle.lat + v4 * particle.dt
+    sig_dep4 = sig_dep + w4 * particle.dt
+    dep4 = sig_dep4 * fieldset.H[time, 0, lat4, lon4]
+
+    particle_dlon += (u1 + 2 * u2 + 2 * u3 + u4) / 6 * particle.dt  # noqa
+    particle_dlat += (v1 + 2 * v2 + 2 * v3 + v4) / 6 * particle.dt  # noqa
+    particle_ddepth += (  # noqa
+        (dep1 - particle.depth) * 2
+        + 2 * (dep2 - particle.depth) * 2
+        + 2 * (dep3 - particle.depth)
+        + dep4
+        - particle.depth
+    ) / 6
 
 
 def AdvectionEE(particle, fieldset, time):

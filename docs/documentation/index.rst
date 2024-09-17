@@ -22,6 +22,7 @@ Parcels has several documentation and tutorial Jupyter notebooks and scripts whi
    ../examples/documentation_indexing.ipynb
    ../examples/tutorial_nemo_curvilinear.ipynb
    ../examples/tutorial_nemo_3D.ipynb
+   ../examples/tutorial_croco_3D.ipynb
    ../examples/tutorial_NestedFields.ipynb
    ../examples/tutorial_timevaryingdepthdimensions.ipynb
    ../examples/tutorial_periodic_boundaries.ipynb

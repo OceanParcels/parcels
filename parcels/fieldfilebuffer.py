@@ -35,6 +35,7 @@ class _FileBuffer:
         self.cast_data_dtype = kwargs.pop("cast_data_dtype", np.float32)
         self.ti = None
         self.interp_method = interp_method
+        self.gridindexingtype = kwargs.pop("gridindexingtype", "nemo")
         self.data_full_zdim = data_full_zdim
         if ("lon" in self.indices) or ("lat" in self.indices):
             self.nolonlatindices = False
@@ -92,7 +93,7 @@ class NetcdfFileBuffer(_FileBuffer):
     def lonlat(self):
         lon = self.dataset[self.dimensions["lon"]]
         lat = self.dataset[self.dimensions["lat"]]
-        if self.nolonlatindices:
+        if self.nolonlatindices and self.gridindexingtype not in ["croco"]:
             if len(lon.shape) < 3:
                 lon_subset = np.array(lon)
                 lat_subset = np.array(lat)
@@ -105,6 +106,9 @@ class NetcdfFileBuffer(_FileBuffer):
         else:
             xdim = lon.size if len(lon.shape) == 1 else lon.shape[-1]
             ydim = lat.size if len(lat.shape) == 1 else lat.shape[-2]
+            if self.gridindexingtype in ["croco"]:
+                xdim -= 1
+                ydim -= 1
             self.indices["lon"] = self.indices["lon"] if "lon" in self.indices else range(xdim)
             self.indices["lat"] = self.indices["lat"] if "lat" in self.indices else range(ydim)
             if len(lon.shape) == 1:
@@ -142,6 +146,8 @@ class NetcdfFileBuffer(_FileBuffer):
         if "depth" in self.dimensions:
             depth = self.dataset[self.dimensions["depth"]]
             depthsize = depth.size if len(depth.shape) == 1 else depth.shape[-3]
+            if self.gridindexingtype in ["croco"]:
+                depthsize -= 1
             self.data_full_zdim = depthsize
             self.indices["depth"] = self.indices["depth"] if "depth" in self.indices else range(depthsize)
             if len(depth.shape) == 1:

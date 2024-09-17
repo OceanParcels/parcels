@@ -271,8 +271,8 @@ class FieldSet:
                         "C-grid velocities require longitude and latitude dimensions at least length 2"
                     )
 
-            if U.gridindexingtype not in ["nemo", "mitgcm", "mom5", "pop"]:
-                raise ValueError("Field.gridindexing has to be one of 'nemo', 'mitgcm', 'mom5' or 'pop'")
+            if U.gridindexingtype not in ["nemo", "mitgcm", "mom5", "pop", "croco"]:
+                raise ValueError("Field.gridindexing has to be one of 'nemo', 'mitgcm', 'mom5', 'pop' or 'croco'")
 
             if V.gridindexingtype != U.gridindexingtype or (W and W.gridindexingtype != U.gridindexingtype):
                 raise ValueError("Not all velocity Fields have the same gridindexingtype")
@@ -409,7 +409,7 @@ class FieldSet:
             Method for interpolation. Options are 'linear' (default), 'nearest',
             'linear_invdist_land_tracer', 'cgrid_velocity', 'cgrid_tracer' and 'bgrid_velocity'
         gridindexingtype : str
-            The type of gridindexing. Either 'nemo' (default) or 'mitgcm' are supported.
+            The type of gridindexing. Either 'nemo' (default), 'mitgcm', 'mom5', 'pop', or 'croco' are supported.
             See also the Grid indexing documentation on oceanparcels.org
         chunksize :
             size of the chunks in dask loading. Default is None (no chunking). Can be None or False (no chunking),
@@ -682,6 +682,71 @@ class FieldSet:
         return fieldset
 
     @classmethod
+    def from_croco(
+        cls,
+        filenames,
+        variables,
+        dimensions,
+        indices=None,
+        mesh="spherical",
+        allow_time_extrapolation=None,
+        time_periodic=False,
+        tracer_interp_method="cgrid_tracer",
+        chunksize=None,
+        **kwargs,
+    ):
+        """Initialises FieldSet object from NetCDF files of CROCO fields.
+        All parameters and keywords are exactly the same as for FieldSet.from_nemo(), except that
+        the vertical coordinate is scaled by the bathymetry (``h``) field from CROCO, in order to
+        account for the sigma-grid. The horizontal interpolation uses the MITgcm grid indexing
+        as described in FieldSet.from_mitgcm().
+
+        The sigma grid scaling means that FieldSet.from_croco() requires a variable ``H: h`` to work.
+
+        See `the CROCO 3D tutorial <../examples/tutorial_croco_3D.ipynb>`__ for more infomation.
+        """
+        if "creation_log" not in kwargs.keys():
+            kwargs["creation_log"] = "from_croco"
+        if kwargs.pop("gridindexingtype", "croco") != "croco":
+            raise ValueError(
+                "gridindexingtype must be 'croco' in FieldSet.from_croco(). Use FieldSet.from_c_grid_dataset otherwise"
+            )
+
+        dimsU = dimensions["U"] if "U" in dimensions else dimensions
+        if ("depth" in dimsU) and ("H" not in variables):
+            raise ValueError("FieldSet.from_croco() requires a field 'H' for the bathymetry")
+
+        interp_method = {}
+        for v in variables:
+            if v in ["U", "V"]:
+                interp_method[v] = "cgrid_velocity"
+            elif v in ["W", "H"]:
+                interp_method[v] = "linear"
+            else:
+                interp_method[v] = tracer_interp_method
+
+        # Suppress the warning about the velocity interpolation since it is ok for CROCO
+        warnings.filterwarnings(
+            "ignore",
+            "Sampling of velocities should normally be done using fieldset.UV or fieldset.UVW object; tread carefully",
+        )
+
+        fieldset = cls.from_netcdf(
+            filenames,
+            variables,
+            dimensions,
+            mesh=mesh,
+            indices=indices,
+            time_periodic=time_periodic,
+            allow_time_extrapolation=allow_time_extrapolation,
+            interp_method=interp_method,
+            chunksize=chunksize,
+            gridindexingtype="croco",
+            **kwargs,
+        )
+        return fieldset
+
+    @classmethod
     def from_c_grid_dataset(
         cls,
         filenames,
@@ -760,7 +825,7 @@ class FieldSet:
             Method for interpolation of tracer fields. It is recommended to use 'cgrid_tracer' (default)
             Note that in the case of from_nemo() and from_c_grid_dataset(), the velocity fields are default to 'cgrid_velocity'
         gridindexingtype : str
-            The type of gridindexing. Set to 'nemo' in FieldSet.from_nemo()
+            The type of gridindexing. Set to 'nemo' in FieldSet.from_nemo(), 'mitgcm' in FieldSet.from_mitgcm() or 'croco' in FieldSet.from_croco().
             See also the Grid indexing documentation on oceanparcels.org (Default value = 'nemo')
         chunksize :
             size of the chunks in dask loading. (Default value = None)

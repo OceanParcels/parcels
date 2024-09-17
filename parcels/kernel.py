@@ -25,6 +25,7 @@ from parcels._compat import MPI
 from parcels.application_kernels.advection import (
     AdvectionAnalytical,
     AdvectionRK4_3D,
+    AdvectionRK4_3D_CROCO,
     AdvectionRK45,
 )
 from parcels.compilation.codegenerator import KernelGenerator, LoopGenerator
@@ -192,6 +193,10 @@ class Kernel(BaseKernel):
 
         # Derive meta information from pyfunc, if not given
         self.check_fieldsets_in_kernels(pyfunc)
+
+        if (pyfunc is AdvectionRK4_3D) and fieldset.U.gridindexingtype == "croco":
+            pyfunc = AdvectionRK4_3D_CROCO
+            self.funcname = "AdvectionRK4_3D_CROCO"
 
         if funcvars is not None:
             self.funcvars = funcvars
