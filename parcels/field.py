@@ -1389,7 +1389,7 @@ class Field:
 
     def ccode_eval(self, var, t, z, y, x):
         self._check_velocitysampling()
-        ccode_str = f"temporal_interpolation({x}, {y}, {z}, {t}, {self.ccode_name}, &particles->xi[pnum*ngrid], &particles->yi[pnum*ngrid], &particles->zi[pnum*ngrid], &particles->ti[pnum*ngrid], &{var}, {self.interp_method.upper()}, {self.gridindexingtype.upper()})"
+        ccode_str = f"temporal_interpolation({x}, {y}, {z}, {t}, {self.ccode_name}, &particles->xi[pnum*ngrid], &particles->yi[pnum*ngrid], &particles->zi[pnum*ngrid], &particles->ti[pnum*ngrid], &{var})"
         return ccode_str
 
     def ccode_convert(self, _, z, y, x):
@@ -1474,6 +1474,7 @@ class Field:
                 ("allow_time_extrapolation", c_int),
                 ("time_periodic", c_int),
                 ("gridindexingtype", c_int),
+                ("interp_method", c_int),
                 ("data_chunks", POINTER(POINTER(POINTER(c_float)))),
                 ("grid", POINTER(CGrid)),
             ]
@@ -1494,6 +1495,18 @@ class Field:
                 self.c_data_chunks[i] = None
 
         gridindexingtype_mapping = {"nemo": 0, "mitgcm": 1, "mom5": 2, "pop": 3}
+        interp_method_mapping = {
+            "LINEAR": 0,
+            "NEAREST": 1,
+            "CGRID_VELOCITY": 2,
+            "CGRID_TRACER": 3,
+            "BGRID_VELOCITY": 4,
+            "BGRID_W_VELOCITY": 5,
+            "BGRID_TRACER": 6,
+            "LINEAR_INVDIST_LAND_TRACER": 7,
+            "PARTIALSLIP": 8,
+            "FREESLIP": 9,
+        }
 
         cstruct = CField(
             self.grid.xdim,
@@ -1504,6 +1517,7 @@ class Field:
             allow_time_extrapolation,
             time_periodic,
             gridindexingtype_mapping[self.gridindexingtype],
+            interp_method_mapping[self.interp_method.upper()],
             (POINTER(POINTER(c_float)) * len(self.c_data_chunks))(*self.c_data_chunks),
             pointer(self.grid.ctypes_struct),
         )
@@ -2241,13 +2255,13 @@ class VectorField:
             ccode_str = (
                 f"temporal_interpolationUVW({x}, {y}, {z}, {t}, {U.ccode_name}, {V.ccode_name}, {W.ccode_name}, "
                 + "&particles->xi[pnum*ngrid], &particles->yi[pnum*ngrid], &particles->zi[pnum*ngrid], &particles->ti[pnum*ngrid],"
-                + f"&{varU}, &{varV}, &{varW}, {U.interp_method.upper()}, {U.gridindexingtype.upper()})"
+                + f"&{varU}, &{varV}, &{varW})"
             )
         else:
             ccode_str = (
                 f"temporal_interpolationUV({x}, {y}, {z}, {t}, {U.ccode_name}, {V.ccode_name}, "
                 + "&particles->xi[pnum*ngrid], &particles->yi[pnum*ngrid], &particles->zi[pnum*ngrid], &particles->ti[pnum*ngrid],"
-                + f" &{varU}, &{varV}, {U.interp_method.upper()}, {U.gridindexingtype.upper()})"
+                + f" &{varU}, &{varV})"
             )
         return ccode_str
 
