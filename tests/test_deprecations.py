@@ -4,7 +4,7 @@ from typing import Literal
 import numpy as np
 import pytest
 
-from parcels import Field, FieldSet, JITParticle, ParticleSet
+from parcels import Field, FieldSet, JITParticle, ParticleFile, ParticleSet
 from parcels.grid import (
     CurvilinearGrid,
     CurvilinearSGrid,
@@ -16,13 +16,28 @@ from parcels.grid import (
 )
 from tests.utils import create_fieldset_unit_mesh
 
+Classes = Literal[
+    "Field",
+    "FieldSet",
+    "ParticleSet",
+    "Grid",
+    "RectilinearGrid",
+    "RectilinearZGrid",
+    "RectilinearSGrid",
+    "CurvilinearGrid",
+    "CurvilinearZGrid",
+    "CurvilinearSGrid",
+    "ParticleData",
+    "ParticleFile",
+]
+
 
 class Action:
     """Utility class to help manage, document, and test deprecations."""
 
     def __init__(
         self,
-        class_: Literal["Field", "FieldSet"],
+        class_: Classes,
         name: str,
         type_: Literal["read_only", "make_private", "remove"],
         *,
@@ -227,6 +242,12 @@ actions = [
     # 1727
     Action("ParticleSet",      "iterator()",                     "remove"        ),
     Action("ParticleData",     "iterator()",                     "remove"        ),
+    Action("ParticleFile",     "add_metadata()",                 "remove"        ),
+    Action("ParticleFile",     "write_once()",                   "make_private"  ),
+
+
+
+
 ]
 # fmt: on
 assert len({str(a) for a in actions}) == len(actions)  # Check that all actions are unique
@@ -251,6 +272,8 @@ def create_test_data():
     lat_g0 = np.linspace(0, 1000, 11, dtype=np.float32)
     time_g0 = np.linspace(0, 1000, 2, dtype=np.float64)
     grid = RectilinearZGrid(lon_g0, lat_g0, time=time_g0)
+
+    pfile = ParticleFile("test.zarr", pset, outputdt=1)
 
     return {
         "Field": {
@@ -292,6 +315,10 @@ def create_test_data():
         "CurvilinearSGrid": {
             "class": CurvilinearSGrid,
             "object": grid,  # not exactly right but good enough
+        },
+        "ParticleFile": {
+            "class": ParticleFile,
+            "object": pfile,
         },
     }
 

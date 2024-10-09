@@ -10,6 +10,7 @@ import zarr
 
 import parcels
 from parcels._compat import MPI
+from parcels.tools._helpers import deprecated, deprecated_made_private
 from parcels.tools.warnings import FileWarning
 
 __all__ = ["ParticleFile"]
@@ -155,6 +156,9 @@ class ParticleFile:
 
         return attrs
 
+    @deprecated(
+        "ParticleFile.metadata is a dictionary. Use `ParticleFile.metadata['key'] = ...` or other dictionary methods instead."
+    )  # TODO: Remove 6 months after v3.1.0
     def add_metadata(self, name, message):
         """Add metadata to :class:`parcels.particleset.ParticleSet`.
 
@@ -175,7 +179,11 @@ class ParticleFile:
         else:
             return var
 
-    def write_once(self, var):
+    @deprecated_made_private  # TODO: Remove 6 months after v3.1.0
+    def write_once(self, *args, **kwargs):
+        return self._write_once(*args, **kwargs)
+
+    def _write_once(self, var):
         return self.particleset.particledata.ptype[var].to_write == "once"
 
     def _extend_zarr_dims(self, Z, store, dtype, axis):
@@ -256,7 +264,7 @@ class ParticleFile:
                 for var in self.vars_to_write:
                     varout = self._convert_varout_name(var)
                     if varout not in ["trajectory"]:  # because 'trajectory' is written as coordinate
-                        if self.write_once(var):
+                        if self._write_once(var):
                             data = np.full(
                                 (arrsize[0],),
                                 self.fill_value_map[self.vars_to_write[var]],
@@ -271,7 +279,7 @@ class ParticleFile:
                             data[ids, 0] = pset.particledata.getvardata(var, indices_to_write)
                             dims = ["trajectory", "obs"]
                         ds[varout] = xr.DataArray(data=data, dims=dims, attrs=attrs[varout])
-                        ds[varout].encoding["chunks"] = self.chunks[0] if self.write_once(var) else self.chunks
+                        ds[varout].encoding["chunks"] = self.chunks[0] if self._write_once(var) else self.chunks
                 ds.to_zarr(self.fname, mode="w")
                 self.create_new_zarrfile = False
             else:
@@ -286,7 +294,7 @@ class ParticleFile:
                     varout = self._convert_varout_name(var)
                     if self.maxids > Z[varout].shape[0]:
                         self._extend_zarr_dims(Z[varout], store, dtype=self.vars_to_write[var], axis=0)
-                    if self.write_once(var):
+                    if self._write_once(var):
                         if len(once_ids) > 0:
                             Z[varout].vindex[ids_once] = pset.particledata.getvardata(var, indices_to_write_once)
                     else:
