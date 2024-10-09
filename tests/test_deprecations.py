@@ -244,6 +244,12 @@ actions = [
     Action("ParticleData",     "iterator()",                     "remove"        ),
     Action("ParticleFile",     "add_metadata()",                 "remove"        ),
     Action("ParticleFile",     "write_once()",                   "make_private"  ),
+    Action("ParticleFile",     "create_new_zarrfile",            "read_only"     ),
+    Action("ParticleFile",     "outputdt",                       "read_only"     ),
+    Action("ParticleFile",     "chunks",                         "read_only"     ),
+    Action("ParticleFile",     "particleset",                    "read_only"     ),
+    Action("ParticleFile",     "fname",                          "read_only"     ),
+
 
 
 

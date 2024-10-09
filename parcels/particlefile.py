@@ -47,16 +47,10 @@ class ParticleFile:
         ParticleFile object that can be used to write particle data to file
     """
 
-    outputdt = None
-    particleset = None
-    parcels_mesh = None
-    time_origin = None
-    lonlatdepth_dtype = None
-
     def __init__(self, name, particleset, outputdt=np.inf, chunks=None, create_new_zarrfile=True):
-        self.outputdt = outputdt.total_seconds() if isinstance(outputdt, timedelta) else outputdt
-        self.chunks = chunks
-        self.particleset = particleset
+        self._outputdt = outputdt.total_seconds() if isinstance(outputdt, timedelta) else outputdt
+        self._chunks = chunks
+        self._particleset = particleset
         self.parcels_mesh = "spherical"
         if self.particleset.fieldset is not None:
             self.parcels_mesh = self.particleset.fieldset.gridset.grids[0].mesh
@@ -64,7 +58,7 @@ class ParticleFile:
         self.lonlatdepth_dtype = self.particleset.particledata.lonlatdepth_dtype
         self.maxids = 0
         self.pids_written = {}
-        self.create_new_zarrfile = create_new_zarrfile
+        self._create_new_zarrfile = create_new_zarrfile
         self.vars_to_write = {}
         for var in self.particleset.particledata.ptype.variables:
             if var.to_write:
@@ -104,7 +98,7 @@ class ParticleFile:
             # But we need to handle incompatibility with MPI mode for now:
             if MPI and MPI.COMM_WORLD.Get_size() > 1:
                 raise ValueError("Currently, MPI mode is not compatible with directly passing a Zarr store.")
-            self.fname = name
+            fname = name
         else:
             extension = os.path.splitext(str(name))[1]
             if extension in [".nc", ".nc4"]:
@@ -112,15 +106,36 @@ class ParticleFile:
                     "Output in NetCDF is not supported anymore. Use .zarr extension for ParticleFile name."
                 )
             if MPI and MPI.COMM_WORLD.Get_size() > 1:
-                self.fname = os.path.join(name, f"proc{self.mpi_rank:02d}.zarr")
+                fname = os.path.join(name, f"proc{self.mpi_rank:02d}.zarr")
                 if extension in [".zarr"]:
                     warnings.warn(
-                        f"The ParticleFile name contains .zarr extension, but zarr files will be written per processor in MPI mode at {self.fname}",
+                        f"The ParticleFile name contains .zarr extension, but zarr files will be written per processor in MPI mode at {fname}",
                         FileWarning,
                         stacklevel=2,
                     )
             else:
-                self.fname = name if extension in [".zarr"] else f"{name}.zarr"
+                fname = name if extension in [".zarr"] else f"{name}.zarr"
+        self._fname = fname
+
+    @property
+    def create_new_zarrfile(self):
+        return self._create_new_zarrfile
+
+    @property
+    def outputdt(self):
+        return self._outputdt
+
+    @property
+    def chunks(self):
+        return self._chunks
+
+    @property
+    def particleset(self):
+        return self._particleset
+
+    @property
+    def fname(self):
+        return self._fname
 
     def _create_variables_attribute_dict(self):
         """Creates the dictionary with variable attributes.
@@ -242,7 +257,7 @@ class ParticleFile:
 
             if self.create_new_zarrfile:
                 if self.chunks is None:
-                    self.chunks = (len(ids), 1)
+                    self._chunks = (len(ids), 1)
                 if pset._repeatpclass is not None and self.chunks[0] < 1e4:
                     warnings.warn(
                         f"ParticleFile chunks are set to {self.chunks}, but this may lead to "
@@ -281,7 +296,7 @@ class ParticleFile:
                         ds[varout] = xr.DataArray(data=data, dims=dims, attrs=attrs[varout])
                         ds[varout].encoding["chunks"] = self.chunks[0] if self._write_once(var) else self.chunks
                 ds.to_zarr(self.fname, mode="w")
-                self.create_new_zarrfile = False
+                self._create_new_zarrfile = False
             else:
                 # Either use the store that was provided directly or create a DirectoryStore:
                 if issubclass(type(self.fname), zarr.storage.Store):
