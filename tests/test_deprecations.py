@@ -168,6 +168,7 @@ actions = [
     Action("Grid",             "lat_flipped",                    "make_private"  ),
     Action("Grid",             "defer_load",                     "read_only"     ),
     Action("Grid",             "lonlat_minmax",                  "read_only"     ),
+    Action("RectilinearGrid",  "lonlat_minmax",                  "read_only"     ),
     Action("Grid",             "load_chunk",                     "make_private"  ),
     Action("Grid",             "cgrid",                          "make_private"  ),
     Action("Grid",             "child_ctypes_struct",            "make_private"  ),
@@ -222,6 +223,10 @@ actions = [
     Action("CurvilinearSGrid", "z4d",                            "make_private"  ),
     Action("CurvilinearSGrid", "xdim",                           "read_only"     ),
     Action("CurvilinearSGrid", "ydim",                           "read_only"     ),
+
+    # 1727
+    Action("ParticleSet",      "iterator()",                     "remove"        ),
+    Action("ParticleData",     "iterator()",                     "remove"        ),
 ]
 # fmt: on
 assert len({str(a) for a in actions}) == len(actions)  # Check that all actions are unique
