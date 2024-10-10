@@ -249,9 +249,8 @@ actions = [
     Action("ParticleFile",     "chunks",                         "read_only"     ),
     Action("ParticleFile",     "particleset",                    "read_only"     ),
     Action("ParticleFile",     "fname",                          "read_only"     ),
-
-
-
+    Action("ParticleFile",     "vars_to_write",                  "read_only"     ),
+    Action("ParticleFile",     "time_origin",                    "read_only"     ),
 
 
 ]

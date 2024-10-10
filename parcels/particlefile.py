@@ -54,12 +54,11 @@ class ParticleFile:
         self.parcels_mesh = "spherical"
         if self.particleset.fieldset is not None:
             self.parcels_mesh = self.particleset.fieldset.gridset.grids[0].mesh
-        self.time_origin = self.particleset.time_origin
         self.lonlatdepth_dtype = self.particleset.particledata.lonlatdepth_dtype
         self.maxids = 0
         self.pids_written = {}
         self._create_new_zarrfile = create_new_zarrfile
-        self.vars_to_write = {}
+        self._vars_to_write = {}
         for var in self.particleset.particledata.ptype.variables:
             if var.to_write:
                 self.vars_to_write[var.name] = var.dtype
@@ -136,6 +135,14 @@ class ParticleFile:
     @property
     def fname(self):
         return self._fname
+
+    @property
+    def vars_to_write(self):
+        return self._vars_to_write
+
+    @property
+    def time_origin(self):
+        return self.particleset.time_origin
 
     def _create_variables_attribute_dict(self):
         """Creates the dictionary with variable attributes.
