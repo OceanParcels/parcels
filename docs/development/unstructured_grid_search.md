@@ -222,7 +222,7 @@ P = a₀ + a₁·xsi + a₂·eta + a₃·xsi·eta
 
 The coefficients `a` and `b` are derived from the cell's four corner coordinates. The particle is inside the cell if `0 ≤ xsi ≤ 1` and `0 ≤ eta ≤ 1`.
 
-This inverse assumes the cell has straight edges. That holds on a flat mesh, where `_bilinear_inverse_latlon` solves it directly in (lon, lat). On a sphere the edges are great-circle arcs, so `_bilinear_inverse_tangent_plane` first gnomonically projects (radially projects) the four corners and the particle onto a plane tangent to the sphere at the cell's centre, using `_spherical_project_cell_and_query`. The projection conserves which side of an edge a point lies on, while converting the curved edges to straight edges, allowing the bilinear inverse to measure the particle against the cell's true boundary at any cell size.
+This inverse assumes the cell has straight edges. That holds on a flat mesh, where `_bilinear_inverse_latlon` solves it directly in (lon, lat). On a sphere the edges are great-circle arcs, so `_bilinear_inverse_tangent_plane` first gnomonically projects (radially projects) the four corners and the particle onto a plane tangent to the sphere at the cell's centre, using `_spherical_project_cell_and_query`. The projection conserves which side of an edge a point lies on, while converting the curved edges to straight edges, allowing the bilinear inverse to measure the particle against the cell's true boundary.
 
 ### Unstructured grids (`UxGrid`)
 
