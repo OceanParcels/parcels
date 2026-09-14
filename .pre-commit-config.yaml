@@ -10,12 +10,12 @@ repos:
         types: [text]
         files: \.(json|ipynb)$
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: v1.29.0
+    rev: v1.30.1
     hooks:
       - id: zizmor
         args: ["--offline"]
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.3
+    rev: v0.16.7
     hooks:
       - id: ruff
         name: ruff lint (.py)
