@@ -36,7 +36,56 @@ This will make Parcels use `numpy` functions in the interpolation routines, whic
 | ---------------------------------- | ------------------------------------------------------ |
 | Very fast and simple to implement. | Will only work if the entire Dataset fits into memory. |
 
-## Option 2: use (cached) zarr files
+## Option 2: use ChunkCachedArrays
+
+_Uses Parcels Backend: ChunkCachedArray_
+
+**Best for: large Datasets (more than a few GB) and particles distributed over the entire domain**
+
+If your Dataset is so large that it doesn't fit into memory, you can use the {py:func}`parcels.FieldSet.to_chunk_cached_arrays()`.
+This constructs a cache where individual (dask) chunks of data are stored.
+During a simulation, Parcels fetches data from the chunk cache and, only if the data is not loaded in the cache, retrieves data from disk to use and store in the cache.
+
+This results in a smaller memory footprint than the windowed array approach (especially if the particles aren't distributed over the spatial domain).
+
+```{code-block} python
+fieldset.to_chunk_cached_arrays()
+```
+
+### Advantages and disadvantages
+
+| Advantages                                                                                            | Disadvantages                                                                                                                                 |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Parcels will only hold accessed chunks of data in memory, which is much less than the entire Dataset. | With many particles that cover the entire domain, the caching layer (and finding which particles are in which chunks) can have more overhead. |
+| Hydrodynamic files do not have to be reformatted and stored.                                          |                                                                                                                                               |
+
+## Option 3: use Windowed Arrays
+
+_Uses Parcels Backend: WindowedArray_
+
+**Best for: large Datasets (more than a few GB) and particles distributed over the entire domain**
+
+If your Dataset is so large that it doesn't fit into memory, you can use the {py:func}`parcels.FieldSet.to_windowed_arrays()` method to make Parcels only hold two timeslices in memory. Note that this only works if the two timeslices still fit into memory.
+
+The two timeslices (the current and the next) are fully loaded into memory, so this method is especially useful if your particles are distributed over the entire domain, as all data will then have to be accessed anyway.
+
+```{code-block} python
+fieldset.to_windowed_arrays()
+```
+
+### Advantages and disadvantages
+
+| Advantages                                                                                   | Disadvantages                                                                                                                                                                 |
+| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Parcels will only hold two timeslices in memory, which is much less than the entire Dataset. | Parcels will still have to load the entire two timeslices into memory, which can be a lot of data if the Dataset is large.                                                    |
+| Hydrodynamic files do not have to be reformatted and stored.                                 | Inefficient when the Particles only sample a small part of the domain, as Parcels will still load the entire two timeslices into memory.                                      |
+|                                                                                              | Does not work well for initial Field sampling when the particles start at different times, as Parcels will have to load all required timeslices into memory (see note below). |
+
+```{note}
+ If your particles start at multiple times (e.g. [Delayed starts](./tutorial_delaystart.ipynb)), it's best to do the initial sampling with the FieldSet in Dask mode and only convert to WindowedArrays _after_ the initial sampling.
+```
+
+## Option 4: use (cached) zarr files
 
 **Best for: large Datasets (more than a few GB) and particles distributed over a small part of the domain**
 
@@ -65,33 +114,7 @@ ds = parcels.open_raw_zarr(store)
 In our performance testing, we have found that using zarr files saved without any compression can be considerably faster than using compressed zarr files.
 ```
 
-## Option 3: use Windowed Arrays
-
-_Uses Parcels Backend: WindowedArray_
-
-**Best for: large Datasets (more than a few GB) and particles distributed over the entire domain**
-
-If your Dataset is so large that it doesn't fit into memory, you can use the {py:func}`parcels.FieldSet.to_windowed_arrays()` method to make Parcels only hold two timeslices in memory. Note that this only works if the two timeslices still fit into memory.
-
-The two timeslices (the current and the next) are fully loaded into memory, so this method is especially useful if your particles are distributed over the entire domain, as all data will then have to be accessed anyway.
-
-```{code-block} python
-fieldset.to_windowed_arrays()
-```
-
-### Advantages and disadvantages
-
-| Advantages                                                                                   | Disadvantages                                                                                                                                                                 |
-| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Parcels will only hold two timeslices in memory, which is much less than the entire Dataset. | Parcels will still have to load the entire two timeslices into memory, which can be a lot of data if the Dataset is large.                                                    |
-| Hydrodynamic files do not have to be reformatted and stored.                                 | Inefficient when the Particles only sample a small part of the domain, as Parcels will still load the entire two timeslices into memory.                                      |
-|                                                                                              | Does not work well for initial Field sampling when the particles start at different times, as Parcels will have to load all required timeslices into memory (see note below). |
-
-```{note}
- If your particles start at multiple times (e.g. [Delayed starts](./tutorial_delaystart.ipynb)), it's best to do the initial sampling with the FieldSet in Dask mode and only convert to WindowedArrays _after_ the initial sampling.
-```
-
-## Option 4: use Dask
+## Option 5: use Dask
 
 **Best for: large Datasets (more than a few GB) and small ParticleSets (less than a few hundred particles)**
 
@@ -110,26 +133,3 @@ The long-term plan for Parcels development is to make this Option 4 work well fo
 If you have ideas for how to make Parcels faster, we'd love to hear from you!
 Feel free to [open an issue](https://github.com/Parcels-code/Parcels/issues) or reach out to us on [Zulip](https://clam-community.github.io).
 ```
-
-## Option 5: use ChunkCachedArrays
-
-_Uses Parcels Backend: ChunkCachedArray_
-
-**Best for: large Datasets (more than a few GB) and particles distributed over the entire domain**
-
-If your Dataset is so large that it doesn't fit into memory, you can use the {py:func}`parcels.FieldSet.to_chunk_cached_arrays()`.
-This constructs a cache where individual (dask) chunks of data are stored.
-During a simulation, Parcels fetches data from the chunk cache and, only if the data is not loaded in the cache, retrieves data from disk to use and store in the cache.
-
-This results in a smaller memory footprint than the windowed array approach (especially if the particles aren't distributed over the spatial domain).
-
-```{code-block} python
-fieldset.to_chunkcached_arrays()
-```
-
-### Advantages and disadvantages
-
-| Advantages                                                                                            | Disadvantages                                                                                                                                 |
-| ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Parcels will only hold accessed chunks of data in memory, which is much less than the entire Dataset. | With many particles that cover the entire domain, the caching layer (and finding which particles are in which chunks) can have more overhead. |
-| Hydrodynamic files do not have to be reformatted and stored.                                          |                                                                                                                                               |
