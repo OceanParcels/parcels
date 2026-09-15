@@ -40,7 +40,7 @@ This will make Parcels use `numpy` functions in the interpolation routines, whic
 
 _Uses Parcels Backend: ChunkCachedArray_
 
-**Best for: large Datasets (more than a few GB) and particles distributed over the entire domain**
+**Best for: large Datasets (more than a few GB) and particles in only a small region of the domain**
 
 If your Dataset is so large that it doesn't fit into memory, you can use the {py:func}`parcels.FieldSet.to_chunk_cached_arrays()`.
 This constructs a cache where individual (dask) chunks of data are stored.
